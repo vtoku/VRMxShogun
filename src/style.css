@@ -19,6 +19,12 @@
   box-sizing: border-box;
 }
 
+/* The states below set display:flex/grid, which would otherwise override the
+   UA [hidden] rule and leak through. Make hidden authoritative. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -86,22 +92,24 @@ body {
 .logo-word {
   color: #f3f5f9;
 }
-/* red, stylized action accent */
+/* red, tapered slash accent (two pointed blades crossing) */
 .logo-x {
   display: inline-block;
-  margin: 0 0.04em;
-  font-size: 1.28em;
-  font-weight: 900;
-  color: #e5202b;
-  transform: rotate(7deg) scale(1.1);
-  text-shadow: 0 0 12px rgba(229, 32, 43, 0.55), 0 0 2px rgba(229, 32, 43, 0.9);
+  width: 0.9em;
+  height: 0.9em;
+  margin: 0 0.03em;
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 7px rgba(229, 32, 43, 0.5));
+}
+.logo-x path {
+  fill: #e5202b;
 }
 .logo-hero {
   font-size: 64px;
   letter-spacing: -0.04em;
 }
 .logo-hero .logo-x {
-  text-shadow: 0 0 28px rgba(229, 32, 43, 0.6), 0 0 4px rgba(229, 32, 43, 0.9);
+  filter: drop-shadow(0 0 22px rgba(229, 32, 43, 0.55));
 }
 .hero {
   text-align: center;

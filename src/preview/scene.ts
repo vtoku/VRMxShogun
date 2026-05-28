@@ -9,7 +9,7 @@ function makeAxisLabel(text: string, color: string): THREE.Sprite {
   c.width = 64;
   c.height = 64;
   const ctx = c.getContext("2d")!;
-  ctx.font = "bold 50px system-ui, sans-serif";
+  ctx.font = "bold 38px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = color;
@@ -130,17 +130,17 @@ export class PreviewScene {
     root.renderOrder = 1000;
     group.add(root);
 
-    const ld = rootSize * 1.18;
-    const ls = size * 1.9;
+    const ld = rootSize * 1.15;
+    const ls = size * 1.3;
     const addLabel = (t: string, color: string, x: number, y: number, z: number) => {
       const sp = makeAxisLabel(t, color);
       sp.position.set(x, y, z);
       sp.scale.setScalar(ls);
       group.add(sp);
     };
-    addLabel("X", "#ff5555", ld, 0, 0);
-    addLabel("Y", "#55ff77", 0, ld, 0);
-    addLabel("Z", "#5588ff", 0, 0, ld);
+    addLabel("+X", "#ff5555", ld, 0, 0);
+    addLabel("+Y", "#55ff77", 0, ld, 0);
+    addLabel("+Z", "#5588ff", 0, 0, ld);
 
     group.visible = this.gizmosVisible;
     this.gizmos = group;

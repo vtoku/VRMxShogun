@@ -138,9 +138,9 @@ export class PreviewScene {
       sp.scale.setScalar(ls);
       group.add(sp);
     };
-    addLabel("+X", "#ff5555", ld, 0, 0);
-    addLabel("+Y", "#55ff77", 0, ld, 0);
-    addLabel("+Z", "#5588ff", 0, 0, ld);
+    addLabel("X", "#ff5555", ld, 0, 0);
+    addLabel("Y", "#55ff77", 0, ld, 0);
+    addLabel("Z", "#5588ff", 0, 0, ld);
 
     group.visible = this.gizmosVisible;
     this.gizmos = group;

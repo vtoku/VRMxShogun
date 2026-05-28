@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "smoke": "node --experimental-strip-types scripts/fbxSmoke.ts"
+    "smoke": "node --experimental-strip-types scripts/fbxSmoke.ts && node --experimental-strip-types scripts/stripTest.ts"
   },
   "dependencies": {
     "three": "^0.169.0"

@@ -73,24 +73,58 @@ function collectBones(meshes: THREE.SkinnedMesh[]): {
   return { bones: ordered, indexOf };
 }
 
+export interface BuildOptions {
+  /** Bones to remove. Their skin weights are reassigned to the nearest kept
+   *  ancestor first, so the mesh stays attached (used for spring-bone stripping). */
+  stripBones?: Set<THREE.Bone>;
+}
+
 export function buildExportModel(
   root: THREE.Object3D,
   vrm: VrmInfo | null,
   idGen: () => number,
+  opts: BuildOptions = {},
 ): BuildResult {
   root.updateMatrixWorld(true);
 
   const skinned = collectSkinnedMeshes(root);
   const { bones, indexOf } = collectBones(skinned);
 
+  const strip = opts.stripBones && opts.stripBones.size > 0 ? opts.stripBones : null;
+  const keptBones = strip ? bones.filter((b) => !strip.has(b)) : bones;
+  const keptIndexOf = new Map<THREE.Bone, number>();
+  keptBones.forEach((b, i) => keptIndexOf.set(b, i));
+
+  // Nearest ancestor (excluding self) that survives stripping.
+  const nearestKeptAncestor = (bone: THREE.Bone): THREE.Bone | null => {
+    let p = bone.parent as THREE.Bone | null;
+    while (p && (p as THREE.Bone).isBone && indexOf.has(p)) {
+      if (keptIndexOf.has(p)) return p;
+      p = p.parent as THREE.Bone | null;
+    }
+    return null;
+  };
+
+  // Map every bone to the export index its skin weights should land on. Kept
+  // bones map to themselves; stripped (spring) bones map to their nearest kept
+  // ancestor so their hair/skirt verts stay attached instead of detaching.
+  const boneToExport = new Map<THREE.Bone, number>();
+  for (const b of bones) {
+    if (keptIndexOf.has(b)) {
+      boneToExport.set(b, keptIndexOf.get(b)!);
+    } else {
+      const a = nearestKeptAncestor(b);
+      if (a) boneToExport.set(b, keptIndexOf.get(a)!);
+    }
+  }
+
   // Rebake to the Maya joint convention Shogun expects: keep each bone's world
-  // POSITION but discard its rotation, so every joint is world-axis aligned with
-  // identity rotation in bind pose. Names and hierarchy are untouched.
+  // POSITION but discard its rotation. Names and hierarchy are untouched.
   const tmp = new THREE.Vector3();
-  const exportBones: ExportBone[] = bones.map((b, i) => {
+  const exportBones: ExportBone[] = keptBones.map((b, i) => {
     b.matrixWorld.decompose(tmp, new THREE.Quaternion(), new THREE.Vector3());
-    const parent = b.parent as THREE.Bone | null;
-    const parentIndex = parent && indexOf.has(parent) ? indexOf.get(parent)! : -1;
+    const a = nearestKeptAncestor(b);
+    const parentIndex = a ? keptIndexOf.get(a)! : -1;
     return {
       id: idGen(),
       name: b.name || `bone_${i}`,
@@ -100,7 +134,7 @@ export function buildExportModel(
   });
 
   let totalVertices = 0;
-  const meshes: ExportMesh[] = skinned.map((mesh, mi) => buildMesh(mesh, mi, indexOf));
+  const meshes: ExportMesh[] = skinned.map((mesh, mi) => buildMesh(mesh, mi, boneToExport));
   for (const m of meshes) totalVertices += m.vertexCount;
 
   return {
@@ -112,7 +146,7 @@ export function buildExportModel(
 function buildMesh(
   mesh: THREE.SkinnedMesh,
   meshIndex: number,
-  indexOf: Map<THREE.Bone, number>,
+  boneToExport: Map<THREE.Bone, number>,
 ): ExportMesh {
   const geo = mesh.geometry as THREE.BufferGeometry;
   const pos = geo.getAttribute("position") as THREE.BufferAttribute;
@@ -175,7 +209,7 @@ function buildMesh(
         const w = skinWeight.getComponent(i, c);
         if (w <= 0) continue;
         const bone = localBones[skinIndex.getComponent(i, c)];
-        const gIdx = bone ? indexOf.get(bone) : undefined;
+        const gIdx = bone ? boneToExport.get(bone) : undefined;
         if (gIdx === undefined) continue;
         let cl = clusterMap.get(gIdx);
         if (!cl) {

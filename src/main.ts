@@ -1,11 +1,15 @@
 import "./style.css";
+import type { Bone, Object3D } from "three";
 import { parseGLB } from "./vrm/glb";
 import { extractVrm } from "./vrm/humanoid";
 import type { VrmInfo } from "./vrm/humanoid";
+import { extractSpringNodeIndices } from "./vrm/springs";
 import { loadGltf } from "./vrm/loadGltf";
 import { PreviewScene } from "./preview/scene";
 import { buildModel, downloadText, sanitizeFilename } from "./fbx/export";
+import type { BuildResult } from "./convert/build";
 import { renderPanel } from "./ui/metadata";
+import type { PanelHandles } from "./ui/metadata";
 
 const emptyState = document.getElementById("empty-state")!;
 const loadingState = document.getElementById("loading-state")!;
@@ -18,6 +22,17 @@ const viewport = document.getElementById("viewport")!;
 const panel = document.getElementById("panel")!;
 
 let preview: PreviewScene | null = null;
+
+// Everything needed to re-export the current model (e.g. when the spring-strip
+// toggle changes) without re-parsing the file.
+interface Loaded {
+  scene: Object3D;
+  vrm: VrmInfo | null;
+  springBones: Set<Bone>;
+  file: File;
+  toFbx: () => string;
+}
+let loaded: Loaded | null = null;
 
 function showError(msg: string) {
   errorEl.textContent = msg;
@@ -38,6 +53,7 @@ function showEmpty() {
   loadingState.hidden = true;
   loadedState.hidden = true;
   emptyState.hidden = false;
+  loaded = null;
   if (preview) {
     preview.dispose();
     preview = null;
@@ -50,6 +66,29 @@ function nextPaint(): Promise<void> {
   return new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
+}
+
+// Exported bone world positions (meters) for the preview axis gizmos.
+function gizmoPositions(result: BuildResult): Array<[number, number, number]> {
+  return result.model.bones.map((b) => [
+    b.worldPos[0] / 100,
+    b.worldPos[1] / 100,
+    b.worldPos[2] / 100,
+  ]);
+}
+
+// Map glTF node indices -> spring Bone objects, reliably, via GLTFLoader's
+// associations (node names are sanitized/deduped, so name matching is unsafe).
+function collectSpringBones(gltf: any, springIdx: Set<number>): Set<Bone> {
+  const out = new Set<Bone>();
+  const assoc: Map<any, any> | undefined = gltf.parser?.associations;
+  if (!assoc || springIdx.size === 0) return out;
+  for (const [obj, m] of assoc) {
+    if (m && typeof m.nodes === "number" && springIdx.has(m.nodes) && obj.isBone) {
+      out.add(obj as Bone);
+    }
+  }
+  return out;
 }
 
 async function handleFile(file: File) {
@@ -66,21 +105,26 @@ async function handleFile(file: File) {
     const buffer = await file.arrayBuffer();
     const { json } = parseGLB(buffer);
     const vrm: VrmInfo | null = extractVrm(json);
+    const springIdx = extractSpringNodeIndices(json);
     const gltf = await loadGltf(buffer);
 
     // Normalize VRM 0.x forward axis to match VRM 1.0 (three-vrm does the same).
     if (vrm?.version === "0.x") gltf.scene.rotateY(Math.PI);
 
+    const springBones = collectSpringBones(gltf, springIdx);
+
     // Let the bar paint before the heavy synchronous build (rebake + clusters).
     await nextPaint();
     const { result, toFbx } = buildModel(gltf.scene, vrm);
 
-    // Reveal the loaded layout.
+    // Reveal the loaded layout behind the loading overlay.
     if (preview) preview.dispose();
-    loadingState.hidden = true;
     loadedState.hidden = false;
     preview = new PreviewScene(viewport);
     preview.setModel(gltf.scene);
+    preview.setBoneGizmos(gizmoPositions(result));
+
+    loaded = { scene: gltf.scene, vrm, springBones, file, toFbx };
 
     const handles = renderPanel(panel, {
       filename: file.name,
@@ -89,9 +133,23 @@ async function handleFile(file: File) {
       boneCount: result.model.boneCount,
       meshCount: result.model.meshes.length,
       vertexCount: result.model.totalVertices,
+      springCount: springBones.size,
     });
+    wireHandlers(handles);
 
+    // Keep the loading overlay up until the model has actually rendered.
+    await preview.nextRender();
+    await preview.nextRender();
+    loadingState.hidden = true;
+  } catch (e) {
+    showEmpty();
+    showError(e instanceof Error ? e.message : "Failed to load the file.");
+  }
+}
+
+function wireHandlers(handles: PanelHandles) {
   handles.downloadBtn.addEventListener("click", () => {
+    if (!loaded) return;
     const btn = handles.downloadBtn;
     const original = btn.textContent;
     btn.disabled = true;
@@ -99,8 +157,7 @@ async function handleFile(file: File) {
     // Defer so the button repaint lands before the (sync) FBX build.
     setTimeout(() => {
       try {
-        const fbx = toFbx();
-        downloadText(`${sanitizeFilename(file.name)}_retarget.fbx`, fbx);
+        downloadText(`${sanitizeFilename(loaded!.file.name)}_retarget.fbx`, loaded!.toFbx());
       } catch (e) {
         showError("FBX export failed: " + (e instanceof Error ? e.message : String(e)));
       } finally {
@@ -110,14 +167,42 @@ async function handleFile(file: File) {
     }, 30);
   });
 
-    handles.reloadLink.addEventListener("click", () => {
-      fileInput.value = "";
-      showEmpty();
-    });
-  } catch (e) {
+  handles.reloadLink.addEventListener("click", () => {
+    fileInput.value = "";
     showEmpty();
-    showError(e instanceof Error ? e.message : "Failed to load the file.");
+  });
+
+  handles.showBonesCheckbox.addEventListener("change", () => {
+    preview?.setGizmosVisible(handles.showBonesCheckbox.checked);
+  });
+
+  if (handles.stripCheckbox) {
+    handles.stripCheckbox.addEventListener("change", () => void reprocess(handles));
   }
+}
+
+// Rebuild the export model when the spring-strip toggle changes, showing the
+// loading overlay while it reprocesses.
+async function reprocess(handles: PanelHandles) {
+  if (!loaded || !preview) return;
+  const strip = handles.stripCheckbox?.checked ?? false;
+
+  loadingName.textContent = loaded.file.name;
+  loadingState.hidden = false;
+  await nextPaint();
+
+  const { result, toFbx } = buildModel(
+    loaded.scene,
+    loaded.vrm,
+    strip ? loaded.springBones : undefined,
+  );
+  loaded.toFbx = toFbx;
+  preview.setBoneGizmos(gizmoPositions(result));
+  const count = panel.querySelector("#bone-count");
+  if (count) count.textContent = String(result.model.boneCount);
+
+  await preview.nextRender();
+  loadingState.hidden = true;
 }
 
 // ---- drag & drop (whole page) + click-to-pick ---------------------------

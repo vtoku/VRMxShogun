@@ -11,12 +11,16 @@ function makeIdGen(): () => number {
   return () => (id += 1);
 }
 
-export function buildModel(root: THREE.Object3D, vrm: VrmInfo | null): {
+export function buildModel(
+  root: THREE.Object3D,
+  vrm: VrmInfo | null,
+  stripBones?: Set<THREE.Bone>,
+): {
   result: BuildResult;
   toFbx: () => string;
 } {
   const idGen = makeIdGen();
-  const result = buildExportModel(root, vrm, idGen);
+  const result = buildExportModel(root, vrm, idGen, { stripBones });
   return { result, toFbx: () => writeFbx(result.model, idGen) };
 }
 

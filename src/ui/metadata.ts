@@ -9,6 +9,7 @@ export interface PanelData {
   meshCount: number;
   vertexCount: number;
   springCount: number;
+  hyphenBones: string[];
 }
 
 export interface PanelHandles {
@@ -56,6 +57,13 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     ? `<div class="warn">No VRM humanoid extension found — exporting the raw glTF skeleton.</div>`
     : "";
 
+  const hyphenWarn =
+    data.hyphenBones.length > 0
+      ? `<div class="warn">${data.hyphenBones.length} bone name(s) contain "-": ${escapeHtml(
+          data.hyphenBones.slice(0, 6).join(", "),
+        )}${data.hyphenBones.length > 6 ? "…" : ""}. Shogun converts "-" to "_" on import, so these won't match their original names when retargeting back out (e.g. to Unity). Consider renaming them in the VRM first.</div>`
+      : "";
+
   const stripOption =
     data.springCount > 0
       ? `<label class="opt">
@@ -84,7 +92,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
       ${row("Meshes", `${data.meshCount} (${data.vertexCount.toLocaleString()} verts)`)}
     </div>
 
-    ${warn}${notVrm}
+    ${warn}${notVrm}${hyphenWarn}
 
     <div class="options">
       ${stripOption}

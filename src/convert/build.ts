@@ -7,7 +7,7 @@ const METERS_TO_CM = 100;
 
 export interface ExportBone {
   id: number;
-  name: string; // ORIGINAL VRM/glTF bone name — never renamed
+  name: string; // ORIGINAL glTF node name (dots/case preserved) — never renamed
   parentIndex: number; // index into bones[], -1 if root
   worldPos: [number, number, number]; // rebaked world position, cm
 }
@@ -20,10 +20,10 @@ export interface ExportCluster {
 
 export interface ExportMesh {
   name: string;
-  positions: number[]; // flat xyz, world-baked, cm
-  normals: number[]; // per polygon-vertex (Direct)
-  uvs: number[]; // per polygon-vertex (Direct), V-flipped
-  polygonVertexIndex: number[]; // last vertex of each polygon is ~i
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  polygonVertexIndex: number[];
   vertexCount: number;
   color: [number, number, number];
   clusters: ExportCluster[];
@@ -36,10 +36,23 @@ export interface ExportModel {
   totalVertices: number;
 }
 
+export interface BuildInput {
+  scene: THREE.Object3D;
+  vrm: VrmInfo | null;
+  json: any;
+  /** glTF node index -> three.js object (from GLTFLoader associations). */
+  nodeToObj: Map<number, THREE.Object3D>;
+  /** three.js object -> glTF node index. */
+  objToNode: Map<THREE.Object3D, number>;
+  /** spring bone node indices (for stripping / display). */
+  springNodes: Set<number>;
+  stripSprings: boolean;
+}
+
 export interface BuildResult {
   model: ExportModel;
-  /** humanoid bones detected in the VRM extension, by VRM name (informational). */
   humanoidBones: string[];
+  springBoneCount: number;
 }
 
 function collectSkinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
@@ -50,103 +63,104 @@ function collectSkinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
   return out;
 }
 
-// Union of all bones referenced by the skinned meshes, ordered so a parent
-// always precedes its children. Hierarchy is taken verbatim from the scene graph
-// (we never reparent or rename — only the bind-pose orientation is changed).
-function collectBones(meshes: THREE.SkinnedMesh[]): {
-  bones: THREE.Bone[];
-  indexOf: Map<THREE.Bone, number>;
-} {
-  const set = new Set<THREE.Bone>();
-  for (const m of meshes) for (const b of m.skeleton.bones) set.add(b);
+export function buildExportModel(input: BuildInput, idGen: () => number): BuildResult {
+  const { scene, vrm, json, nodeToObj, objToNode } = input;
+  scene.updateMatrixWorld(true);
 
-  const indexOf = new Map<THREE.Bone, number>();
-  const ordered: THREE.Bone[] = [];
-  const visit = (b: THREE.Bone) => {
-    if (indexOf.has(b)) return;
-    const parent = b.parent as THREE.Bone | null;
-    if (parent && (parent as THREE.Bone).isBone && set.has(parent)) visit(parent);
-    indexOf.set(b, ordered.length);
-    ordered.push(b);
-  };
-  for (const b of set) visit(b);
-  return { bones: ordered, indexOf };
-}
+  const nodes: any[] = json.nodes ?? [];
+  const parentOfNode = new Map<number, number>();
+  nodes.forEach((n, i) => {
+    for (const c of n.children ?? []) parentOfNode.set(c, i);
+  });
 
-export interface BuildOptions {
-  /** Bones to remove. Their skin weights are reassigned to the nearest kept
-   *  ancestor first, so the mesh stays attached (used for spring-bone stripping). */
-  stripBones?: Set<THREE.Bone>;
-}
-
-export function buildExportModel(
-  root: THREE.Object3D,
-  vrm: VrmInfo | null,
-  idGen: () => number,
-  opts: BuildOptions = {},
-): BuildResult {
-  root.updateMatrixWorld(true);
-
-  const skinned = collectSkinnedMeshes(root);
-  const { bones, indexOf } = collectBones(skinned);
-
-  const strip = opts.stripBones && opts.stripBones.size > 0 ? opts.stripBones : null;
-  const keptBones = strip ? bones.filter((b) => !strip.has(b)) : bones;
-  const keptIndexOf = new Map<THREE.Bone, number>();
-  keptBones.forEach((b, i) => keptIndexOf.set(b, i));
-
-  // Nearest ancestor (excluding self) that survives stripping.
-  const nearestKeptAncestor = (bone: THREE.Bone): THREE.Bone | null => {
-    let p = bone.parent as THREE.Bone | null;
-    while (p && (p as THREE.Bone).isBone && indexOf.has(p)) {
-      if (keptIndexOf.has(p)) return p;
-      p = p.parent as THREE.Bone | null;
-    }
-    return null;
-  };
-
-  // Map every bone to the export index its skin weights should land on. Kept
-  // bones map to themselves; stripped (spring) bones map to their nearest kept
-  // ancestor so their hair/skirt verts stay attached instead of detaching.
-  const boneToExport = new Map<THREE.Bone, number>();
-  for (const b of bones) {
-    if (keptIndexOf.has(b)) {
-      boneToExport.set(b, keptIndexOf.get(b)!);
-    } else {
-      const a = nearestKeptAncestor(b);
-      if (a) boneToExport.set(b, keptIndexOf.get(a)!);
+  // Skeleton = every skin joint PLUS all of its ancestors in the node tree, so
+  // intermediate non-joint nodes (twist/sub/helper bones) are kept and the
+  // hierarchy matches the VRM exactly.
+  const jointSet = new Set<number>();
+  for (const skin of json.skins ?? []) {
+    for (const j of skin.joints ?? []) jointSet.add(j);
+  }
+  const exportSet = new Set<number>();
+  for (const j of jointSet) {
+    let cur: number | undefined = j;
+    while (cur !== undefined && !exportSet.has(cur)) {
+      exportSet.add(cur);
+      cur = parentOfNode.get(cur);
     }
   }
 
-  // Rebake to the Maya joint convention Shogun expects: keep each bone's world
-  // POSITION but discard its rotation. Names and hierarchy are untouched.
+  const strip = input.stripSprings && input.springNodes.size > 0 ? input.springNodes : null;
+  const isKept = (n: number) => exportSet.has(n) && !strip?.has(n);
+
+  // nearest ancestor node that survives (for parenting + reweight)
+  const nearestKept = (n: number): number | undefined => {
+    let p = parentOfNode.get(n);
+    while (p !== undefined) {
+      if (isKept(p)) return p;
+      p = parentOfNode.get(p);
+    }
+    return undefined;
+  };
+
+  // ordered kept nodes, parent-first
+  const orderedKept: number[] = [];
+  const keptIndex = new Map<number, number>();
+  const visit = (n: number) => {
+    if (keptIndex.has(n) || !isKept(n)) return;
+    const p = parentOfNode.get(n);
+    if (p !== undefined && isKept(p)) visit(p);
+    keptIndex.set(n, orderedKept.length);
+    orderedKept.push(n);
+  };
+  for (const n of exportSet) if (isKept(n)) visit(n);
+
+  // any node -> export index its weights land on (kept -> itself, stripped -> ancestor)
+  const nodeToExport = new Map<number, number>();
+  for (const n of exportSet) {
+    if (isKept(n)) {
+      nodeToExport.set(n, keptIndex.get(n)!);
+    } else {
+      const a = nearestKept(n);
+      if (a !== undefined) nodeToExport.set(n, keptIndex.get(a)!);
+    }
+  }
+
+  // Rebake: keep each node's world position, discard rotation (identity).
   const tmp = new THREE.Vector3();
-  const exportBones: ExportBone[] = keptBones.map((b, i) => {
-    b.matrixWorld.decompose(tmp, new THREE.Quaternion(), new THREE.Vector3());
-    const a = nearestKeptAncestor(b);
-    const parentIndex = a ? keptIndexOf.get(a)! : -1;
+  const exportBones: ExportBone[] = orderedKept.map((n) => {
+    const obj = nodeToObj.get(n);
+    if (obj) obj.matrixWorld.decompose(tmp, new THREE.Quaternion(), new THREE.Vector3());
+    else tmp.set(0, 0, 0);
+    const pa = nearestKept(n);
     return {
       id: idGen(),
-      name: b.name || `bone_${i}`,
-      parentIndex,
+      name: nodes[n]?.name ?? `node_${n}`,
+      parentIndex: pa !== undefined ? keptIndex.get(pa)! : -1,
       worldPos: [tmp.x * METERS_TO_CM, tmp.y * METERS_TO_CM, tmp.z * METERS_TO_CM],
     };
   });
 
+  const skinned = collectSkinnedMeshes(scene);
   let totalVertices = 0;
-  const meshes: ExportMesh[] = skinned.map((mesh, mi) => buildMesh(mesh, mi, boneToExport));
+  const meshes: ExportMesh[] = skinned.map((mesh, mi) =>
+    buildMesh(mesh, mi, objToNode, nodeToExport),
+  );
   for (const m of meshes) totalVertices += m.vertexCount;
+
+  const springBoneCount = [...input.springNodes].filter((n) => exportSet.has(n)).length;
 
   return {
     model: { bones: exportBones, meshes, boneCount: exportBones.length, totalVertices },
     humanoidBones: vrm ? Object.keys(vrm.humanoidBones) : [],
+    springBoneCount,
   };
 }
 
 function buildMesh(
   mesh: THREE.SkinnedMesh,
   meshIndex: number,
-  boneToExport: Map<THREE.Bone, number>,
+  objToNode: Map<THREE.Object3D, number>,
+  nodeToExport: Map<number, number>,
 ): ExportMesh {
   const geo = mesh.geometry as THREE.BufferGeometry;
   const pos = geo.getAttribute("position") as THREE.BufferAttribute;
@@ -201,9 +215,8 @@ function buildMesh(
     }
   }
 
-  // exportBoneIndex -> (vertexIndex -> summed weight). Summing matters when
-  // stripping: a vertex weighted to a spring bone AND another bone that resolves
-  // to the same kept parent must land once with the combined weight, not twice.
+  // exportBoneIndex -> (vertexIndex -> summed weight); summing matters when
+  // stripping reroutes multiple influences onto the same kept parent.
   const acc = new Map<number, Map<number, number>>();
   if (skinIndex && skinWeight) {
     const localBones = mesh.skeleton.bones;
@@ -212,7 +225,8 @@ function buildMesh(
         const w = skinWeight.getComponent(i, c);
         if (w <= 0) continue;
         const bone = localBones[skinIndex.getComponent(i, c)];
-        const gIdx = bone ? boneToExport.get(bone) : undefined;
+        const node = bone ? objToNode.get(bone) : undefined;
+        const gIdx = node !== undefined ? nodeToExport.get(node) : undefined;
         if (gIdx === undefined) continue;
         let vm = acc.get(gIdx);
         if (!vm) {

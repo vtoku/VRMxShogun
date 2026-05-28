@@ -1,5 +1,5 @@
 import "./style.css";
-import type { Bone, Object3D } from "three";
+import type { Object3D } from "three";
 import { parseGLB } from "./vrm/glb";
 import { extractVrm } from "./vrm/humanoid";
 import type { VrmInfo } from "./vrm/humanoid";
@@ -7,7 +7,7 @@ import { extractSpringNodeIndices } from "./vrm/springs";
 import { loadGltf } from "./vrm/loadGltf";
 import { PreviewScene } from "./preview/scene";
 import { buildModel, downloadText, sanitizeFilename } from "./fbx/export";
-import type { BuildResult } from "./convert/build";
+import type { BuildInput, BuildResult } from "./convert/build";
 import { renderPanel } from "./ui/metadata";
 import type { PanelHandles } from "./ui/metadata";
 
@@ -25,10 +25,9 @@ let preview: PreviewScene | null = null;
 
 // Everything needed to re-export the current model (e.g. when the spring-strip
 // toggle changes) without re-parsing the file.
+type BaseInput = Omit<BuildInput, "stripSprings">;
 interface Loaded {
-  scene: Object3D;
-  vrm: VrmInfo | null;
-  springBones: Set<Bone>;
+  base: BaseInput;
   file: File;
   toFbx: () => string;
 }
@@ -77,18 +76,30 @@ function gizmoPositions(result: BuildResult): Array<[number, number, number]> {
   ]);
 }
 
-// Map glTF node indices -> spring Bone objects, reliably, via GLTFLoader's
-// associations (node names are sanitized/deduped, so name matching is unsafe).
-function collectSpringBones(gltf: any, springIdx: Set<number>): Set<Bone> {
-  const out = new Set<Bone>();
+// Node-index <-> object maps from GLTFLoader associations, so the export uses
+// authoritative glTF node names + hierarchy (not GLTFLoader's sanitized names).
+function buildNodeMaps(gltf: any): {
+  nodeToObj: Map<number, Object3D>;
+  objToNode: Map<Object3D, number>;
+} {
+  const nodeToObj = new Map<number, Object3D>();
+  const objToNode = new Map<Object3D, number>();
   const assoc: Map<any, any> | undefined = gltf.parser?.associations;
-  if (!assoc || springIdx.size === 0) return out;
-  for (const [obj, m] of assoc) {
-    if (m && typeof m.nodes === "number" && springIdx.has(m.nodes) && obj.isBone) {
-      out.add(obj as Bone);
+  if (assoc) {
+    for (const [obj, m] of assoc) {
+      if (m && typeof m.nodes === "number") {
+        nodeToObj.set(m.nodes, obj as Object3D);
+        objToNode.set(obj as Object3D, m.nodes);
+      }
     }
   }
-  return out;
+  return { nodeToObj, objToNode };
+}
+
+// Exported bone names that Shogun will mangle on import (it converts "-" to "_",
+// so the bone won't match its original name when retargeting back out to Unity).
+function hyphenBoneNames(result: BuildResult): string[] {
+  return result.model.bones.map((b) => b.name).filter((n) => n.includes("-"));
 }
 
 async function handleFile(file: File) {
@@ -105,17 +116,25 @@ async function handleFile(file: File) {
     const buffer = await file.arrayBuffer();
     const { json } = parseGLB(buffer);
     const vrm: VrmInfo | null = extractVrm(json);
-    const springIdx = extractSpringNodeIndices(json);
+    const springNodes = extractSpringNodeIndices(json);
     const gltf = await loadGltf(buffer);
 
     // Normalize VRM 0.x forward axis to match VRM 1.0 (three-vrm does the same).
     if (vrm?.version === "0.x") gltf.scene.rotateY(Math.PI);
 
-    const springBones = collectSpringBones(gltf, springIdx);
+    const { nodeToObj, objToNode } = buildNodeMaps(gltf);
+    const base: BaseInput = {
+      scene: gltf.scene,
+      vrm,
+      json,
+      nodeToObj,
+      objToNode,
+      springNodes,
+    };
 
     // Let the bar paint before the heavy synchronous build (rebake + clusters).
     await nextPaint();
-    const { result, toFbx } = buildModel(gltf.scene, vrm);
+    const { result, toFbx } = buildModel({ ...base, stripSprings: false });
 
     // Reveal the loaded layout behind the loading overlay.
     if (preview) preview.dispose();
@@ -124,7 +143,7 @@ async function handleFile(file: File) {
     preview.setModel(gltf.scene);
     preview.setBoneGizmos(gizmoPositions(result));
 
-    loaded = { scene: gltf.scene, vrm, springBones, file, toFbx };
+    loaded = { base, file, toFbx };
 
     const handles = renderPanel(panel, {
       filename: file.name,
@@ -133,7 +152,8 @@ async function handleFile(file: File) {
       boneCount: result.model.boneCount,
       meshCount: result.model.meshes.length,
       vertexCount: result.model.totalVertices,
-      springCount: springBones.size,
+      springCount: result.springBoneCount,
+      hyphenBones: hyphenBoneNames(result),
     });
     wireHandlers(handles);
 
@@ -191,11 +211,7 @@ async function reprocess(handles: PanelHandles) {
   loadingState.hidden = false;
   await nextPaint();
 
-  const { result, toFbx } = buildModel(
-    loaded.scene,
-    loaded.vrm,
-    strip ? loaded.springBones : undefined,
-  );
+  const { result, toFbx } = buildModel({ ...loaded.base, stripSprings: strip });
   loaded.toFbx = toFbx;
   preview.setBoneGizmos(gizmoPositions(result));
   const count = panel.querySelector("#bone-count");

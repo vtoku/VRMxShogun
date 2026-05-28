@@ -1,7 +1,5 @@
-import * as THREE from "three";
 import { buildExportModel } from "../convert/build";
-import type { BuildResult } from "../convert/build";
-import type { VrmInfo } from "../vrm/humanoid";
+import type { BuildInput, BuildResult } from "../convert/build";
 import { writeFbx } from "./asciiFbx";
 
 // FBX object ids must be unique int64s. A single generator is shared by the
@@ -11,16 +9,12 @@ function makeIdGen(): () => number {
   return () => (id += 1);
 }
 
-export function buildModel(
-  root: THREE.Object3D,
-  vrm: VrmInfo | null,
-  stripBones?: Set<THREE.Bone>,
-): {
+export function buildModel(input: BuildInput): {
   result: BuildResult;
   toFbx: () => string;
 } {
   const idGen = makeIdGen();
-  const result = buildExportModel(root, vrm, idGen, { stripBones });
+  const result = buildExportModel(input, idGen);
   return { result, toFbx: () => writeFbx(result.model, idGen) };
 }
 

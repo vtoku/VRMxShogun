@@ -100,9 +100,10 @@ body {
   position: relative;
   z-index: 1;
   display: inline-block;
-  width: 1.55em;
-  height: 1.55em;
-  margin: 0 -0.34em;
+  width: 1.8em;
+  height: 1.8em;
+  /* right margin tighter than left so SHOGUN sits closer to the slash */
+  margin: 0 -0.56em 0 -0.44em;
   transform: translateY(0.12em);
   filter: drop-shadow(0 0 6px rgba(229, 32, 43, 0.85))
     drop-shadow(0 0 15px rgba(229, 32, 43, 0.55));

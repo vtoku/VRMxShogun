@@ -1,15 +1,13 @@
 import * as THREE from "three";
-import { VRM_TO_SHOGUN } from "../vrm/boneMap";
 import type { VrmInfo } from "../vrm/humanoid";
 
 // glTF is meters; we author the FBX in centimeters and declare UnitScaleFactor=1
-// so the avatar imports at correct human size regardless of whether the importer
-// applies UnitScaleFactor. See README "Axis & scale".
+// so the avatar imports at a correct, predictable human size.
 const METERS_TO_CM = 100;
 
 export interface ExportBone {
   id: number;
-  name: string;
+  name: string; // ORIGINAL VRM/glTF bone name — never renamed
   parentIndex: number; // index into bones[], -1 if root
   worldPos: [number, number, number]; // rebaked world position, cm
 }
@@ -40,8 +38,8 @@ export interface ExportModel {
 
 export interface BuildResult {
   model: ExportModel;
-  /** humanoid bones present in the rig, by VRM name. */
-  mappedHumanoid: string[];
+  /** humanoid bones detected in the VRM extension, by VRM name (informational). */
+  humanoidBones: string[];
 }
 
 function collectSkinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
@@ -52,8 +50,9 @@ function collectSkinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
   return out;
 }
 
-// Build the union of all bones referenced by the skinned meshes, ordered so a
-// parent always precedes its children. Returns bones plus a reference->index map.
+// Union of all bones referenced by the skinned meshes, ordered so a parent
+// always precedes its children. Hierarchy is taken verbatim from the scene graph
+// (we never reparent or rename — only the bind-pose orientation is changed).
 function collectBones(meshes: THREE.SkinnedMesh[]): {
   bones: THREE.Bone[];
   indexOf: Map<THREE.Bone, number>;
@@ -84,42 +83,29 @@ export function buildExportModel(
   const skinned = collectSkinnedMeshes(root);
   const { bones, indexOf } = collectBones(skinned);
 
-  // Map glTF node names -> Shogun-friendly names for humanoid bones.
-  const nodeNameToShogun = new Map<string, string>();
-  const mappedHumanoid: string[] = [];
-  if (vrm) {
-    for (const [vrmBone, ref] of Object.entries(vrm.humanoidBones)) {
-      const shogun = VRM_TO_SHOGUN[vrmBone];
-      if (shogun) {
-        nodeNameToShogun.set(ref.nodeName, shogun);
-        mappedHumanoid.push(vrmBone);
-      }
-    }
-  }
-
+  // Rebake to the Maya joint convention Shogun expects: keep each bone's world
+  // POSITION but discard its rotation, so every joint is world-axis aligned with
+  // identity rotation in bind pose. Names and hierarchy are untouched.
   const tmp = new THREE.Vector3();
   const exportBones: ExportBone[] = bones.map((b, i) => {
     b.matrixWorld.decompose(tmp, new THREE.Quaternion(), new THREE.Vector3());
     const parent = b.parent as THREE.Bone | null;
     const parentIndex = parent && indexOf.has(parent) ? indexOf.get(parent)! : -1;
-    const shogun = nodeNameToShogun.get(b.name);
     return {
       id: idGen(),
-      name: shogun ?? b.name ?? `bone_${i}`,
+      name: b.name || `bone_${i}`,
       parentIndex,
       worldPos: [tmp.x * METERS_TO_CM, tmp.y * METERS_TO_CM, tmp.z * METERS_TO_CM],
     };
   });
 
   let totalVertices = 0;
-  const meshes: ExportMesh[] = skinned.map((mesh, mi) =>
-    buildMesh(mesh, mi, indexOf),
-  );
+  const meshes: ExportMesh[] = skinned.map((mesh, mi) => buildMesh(mesh, mi, indexOf));
   for (const m of meshes) totalVertices += m.vertexCount;
 
   return {
     model: { bones: exportBones, meshes, boneCount: exportBones.length, totalVertices },
-    mappedHumanoid,
+    humanoidBones: vrm ? Object.keys(vrm.humanoidBones) : [],
   };
 }
 
@@ -139,7 +125,6 @@ function buildMesh(
   const world = mesh.matrixWorld;
   const normalMat = new THREE.Matrix3().getNormalMatrix(world);
 
-  // World-baked vertex positions (cm).
   const positions = new Array<number>(vertexCount * 3);
   const v = new THREE.Vector3();
   for (let i = 0; i < vertexCount; i++) {
@@ -149,7 +134,6 @@ function buildMesh(
     positions[i * 3 + 2] = v.z * METERS_TO_CM;
   }
 
-  // Triangle list -> FBX polygon vertex index (last vertex of poly is ~i).
   const triIndices: number[] = [];
   if (geo.index) {
     const idx = geo.index;
@@ -164,8 +148,8 @@ function buildMesh(
   const normals: number[] = [];
   const uvs: number[] = [];
   const n = new THREE.Vector3();
-  for (let t = 0; t < triIndices.length; t += 3) {
-    const tri = [triIndices[t], triIndices[t + 1], triIndices[t + 2]];
+  for (let tt = 0; tt < triIndices.length; tt += 3) {
+    const tri = [triIndices[tt], triIndices[tt + 1], triIndices[tt + 2]];
     for (let k = 0; k < 3; k++) {
       const vi = tri[k];
       polygonVertexIndex.push(k === 2 ? -(vi + 1) : vi);
@@ -176,14 +160,13 @@ function buildMesh(
         normals.push(0, 1, 0);
       }
       if (uv) {
-        uvs.push(uv.getX(vi), 1 - uv.getY(vi)); // FBX V is bottom-up
+        uvs.push(uv.getX(vi), 1 - uv.getY(vi));
       } else {
         uvs.push(0, 0);
       }
     }
   }
 
-  // Skin weights -> per-bone clusters (global bone index).
   const clusterMap = new Map<number, ExportCluster>();
   if (skinIndex && skinWeight) {
     const localBones = mesh.skeleton.bones;
@@ -191,8 +174,7 @@ function buildMesh(
       for (let c = 0; c < 4; c++) {
         const w = skinWeight.getComponent(i, c);
         if (w <= 0) continue;
-        const localBone = skinIndex.getComponent(i, c);
-        const bone = localBones[localBone];
+        const bone = localBones[skinIndex.getComponent(i, c)];
         const gIdx = bone ? indexOf.get(bone) : undefined;
         if (gIdx === undefined) continue;
         let cl = clusterMap.get(gIdx);
@@ -208,9 +190,10 @@ function buildMesh(
 
   const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
   const single = Array.isArray(mat) ? mat[0] : mat;
-  const color = single && (single as any).color
-    ? [(single as any).color.r, (single as any).color.g, (single as any).color.b]
-    : [0.8, 0.8, 0.8];
+  const color =
+    single && (single as any).color
+      ? [(single as any).color.r, (single as any).color.g, (single as any).color.b]
+      : [0.8, 0.8, 0.8];
 
   return {
     name: mesh.name || `mesh_${meshIndex}`,

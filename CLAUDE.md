@@ -33,14 +33,14 @@ No tests/linter configured yet. When adding them, document the single-test invoc
 ```
 VRM file (drag/drop, whole page)
   → GLB parse (manual): JSON chunk → VRM humanoid bones + meta   (src/vrm/glb.ts, humanoid.ts)
-  → GLTFLoader.parse(): SkinnedMesh + Skeleton                   (src/vrm/skinnedMesh.ts)
-  → rename bones → Shogun-friendly names (Hips, Spine, LeftUpperArm…)
+  → GLTFLoader.parse(): SkinnedMesh + Skeleton
   → BONE REBAKE: world-align every joint (identity rotation, Maya convention)
+    — ORIGINAL bone names + hierarchy preserved verbatim; only orientation changes
   → ASCII FBX writer: LimbNode skeleton + skinned mesh + skin clusters + BindPose
   → download .fbx
 ```
 
-Keep parse → rename → rebake output-agnostic from the FBX writer. The rebake produces one normalized skeleton; the writer is a pure consumer of it.
+Keep parse → rebake output-agnostic from the FBX writer. The rebake produces one normalized skeleton; the writer is a pure consumer of it.
 
 ## Domain knowledge that is easy to get wrong
 
@@ -52,9 +52,9 @@ Keep parse → rename → rebake output-agnostic from the FBX writer. The rebake
 
 - **VRM 0.x vs 1.0 differ** in extension key (`VRM` vs `VRMC_vrm`), humanBones shape (array vs object), meta field names, and forward axis (180° apart). Detect the version and normalize both into one internal `{ version, meta, humanoidBones }` shape.
 
-- **Axis/units:** declare `UpAxis=Y`, `UnitScaleFactor=100` (cm) in FBX `GlobalSettings` and do **not** rotate geometry — let Shogun's import dialog convert to the project's axis/units. Centralize any axis/unit constants; never scatter them across the writer. Fallback documented in SPEC.md if Shogun imports rotated 90°.
+- **Axis/units:** geometry is converted meters→cm (`METERS_TO_CM` in [src/convert/build.ts](src/convert/build.ts)) and the FBX declares `UpAxis=Y`, `UnitScaleFactor=1`; geometry is **not** rotated. This makes size correct regardless of whether the importer applies `UnitScaleFactor`. Keep the scale constant centralized. Fallback documented in SPEC.md/README if Shogun imports at wrong scale or rotated 90°.
 
-- **Bone names drive Shogun retargeting.** Rename to the Shogun schema (`Hips`, `Spine`, `LeftUpperArm`, …) before export; keep original names only for the metadata panel display.
+- **Never rename bones and never change the hierarchy.** Preserve the VRM's original bone names and parenting exactly. Renaming (even to a "Shogun-friendly" schema) **breaks downstream streaming retargeting to Unity/Warudo**, which keys off the original names — this was confirmed by real-world testing and overrides the original spec. Shogun compatibility comes from FBX *structure* + the bind-pose rebake, NOT from names. (Orientation is the one thing the rebake changes — that is required by Shogun and is allowed.)
 
 ## GitHub Pages deployment
 

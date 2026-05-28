@@ -12,7 +12,7 @@ Convert a `.vrm` humanoid avatar into a Vicon Shogun–compatible `.fbx`, **enti
 2. The avatar renders in a 3D preview with its metadata (title, author, license, bone/vertex counts).
 3. Click **Download FBX** to get a `.fbx` you can import into Shogun as a retarget target.
 
-The FBX contains the **skeleton, skinned mesh, and skin weights**. The humanoid bones are renamed to a Shogun-friendly schema (`Hips`, `Spine`, `LeftUpperArm`, …) and **rebaked to world-aligned orientation** (the Maya joint convention Shogun expects: every joint has identity rotation in bind pose, differing only by translation).
+The FBX contains the **skeleton, skinned mesh, and skin weights**. The bone **hierarchy and names are preserved exactly from the VRM** — bones are *not* renamed, because renaming breaks downstream streaming retargeting (e.g. Unity/Warudo). Only the **bind-pose orientation** is **rebaked to world-aligned** (the Maya joint convention Shogun expects: every joint has identity rotation in bind pose, differing only by translation).
 
 ## How it works
 
@@ -21,8 +21,8 @@ Pure client-side pipeline (see [SPEC.md](SPEC.md) for the full design):
 ```
 VRM → manual GLB parse (humanoid + meta)        src/vrm/
     → three GLTFLoader (SkinnedMesh + Skeleton)
-    → rename humanoid bones → Shogun schema      src/vrm/boneMap.ts
-    → rebake skeleton to world-aligned joints     src/convert/build.ts
+    → rebake bind pose to world-aligned joints    src/convert/build.ts
+      (original bone names + hierarchy preserved)
     → ASCII FBX 7.4 writer (LimbNodes + skin       src/fbx/asciiFbx.ts
       clusters + BindPose) → download
 ```

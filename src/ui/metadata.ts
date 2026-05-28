@@ -6,7 +6,6 @@ export interface PanelData {
   fileSize: number;
   vrm: VrmInfo | null;
   boneCount: number;
-  mappedHumanoid: string[];
   meshCount: number;
   vertexCount: number;
 }
@@ -69,7 +68,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
 
     <div class="rows">
       ${row("Skeleton", `${data.boneCount} bones`)}
-      ${row("Humanoid", `${data.mappedHumanoid.length}/${totalHumanoid} mapped`)}
+      ${row("Humanoid", v ? `${totalHumanoid} bones` : "—")}
       ${row("Meshes", `${data.meshCount} (${data.vertexCount.toLocaleString()} verts)`)}
     </div>
 
@@ -78,8 +77,9 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     <button id="download-btn" class="download-btn">Download FBX</button>
 
     <div class="notes">
-      <p>FBX contains the skeleton, mesh, and skin weights. Bones are rebaked to
-      world-aligned (Maya convention) so Shogun reads them as a retarget target.</p>
+      <p>The bone hierarchy and names are preserved exactly from the VRM. Only the
+      bind-pose orientation is rebaked to world-aligned (the Maya joint convention
+      Shogun expects) — names and parenting are untouched.</p>
       <p>Textures, MToon shaders, blendshapes, spring bones, and animation are
       <strong>not</strong> included in v1. Everything runs in your browser —
       nothing is uploaded.</p>

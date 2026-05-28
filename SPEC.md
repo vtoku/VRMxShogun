@@ -6,6 +6,17 @@ Hosted as a single page on GitHub Pages so it can be shared as a URL — no inst
 
 ---
 
+## Revision note (2026-05-28) — bone renaming removed
+
+This spec originally called for renaming humanoid bones to a Shogun-friendly schema (`Hips`, `Spine`, `LeftUpperArm`, …). **That was reversed after real-world testing:** renaming bones broke downstream **streaming retargeting to Unity/Warudo**, which keys off the VRM's original bone names. The implemented behavior is:
+
+- **Bone names and hierarchy: preserved exactly from the source VRM. Never renamed or reparented.**
+- **Bind-pose orientation: still rebaked to world-aligned (the Maya joint convention Shogun expects).** This is the one transform applied; it changes orientation only, not names or parenting.
+
+Wherever the sections below say to rename bones to a Shogun schema, treat that as superseded by this note.
+
+---
+
 ## Why this exists
 
 Vicon Shogun has no built-in VRM importer and no public plugin SDK for adding one. Shogun reads FBX cleanly. VRM is glTF 2.0 with a humanoid extension. So the workable path is: convert VRM → FBX in the browser, with the conversion tuned to what Shogun specifically expects (axis settings, bind pose, LimbNode hierarchy, skin clusters).

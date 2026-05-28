@@ -87,7 +87,6 @@ async function handleFile(file: File) {
     fileSize: file.size,
     vrm,
     boneCount: result.model.boneCount,
-    mappedHumanoid: result.mappedHumanoid,
     meshCount: result.model.meshes.length,
     vertexCount: result.model.totalVertices,
   });

@@ -100,10 +100,10 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
       <p>Bone hierarchy and names are preserved exactly from the VRM; only the
       bind-pose orientation is rebaked to world-aligned (the Maya convention
       Shogun expects).</p>
-      <p>Textures, blendshapes, and animation are not exported. Everything runs
-      in your browser — nothing is uploaded.</p>
+      <p>Textures, blendshapes, and animation are not exported.</p>
       <p class="muted">If Shogun imports at the wrong scale or rotation, see the
       README.</p>
+      <p class="muted">Runs only in your browser.</p>
     </div>
 
     <button id="reload-link" class="reload-link">Load a different file</button>

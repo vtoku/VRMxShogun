@@ -201,7 +201,10 @@ function buildMesh(
     }
   }
 
-  const clusterMap = new Map<number, ExportCluster>();
+  // exportBoneIndex -> (vertexIndex -> summed weight). Summing matters when
+  // stripping: a vertex weighted to a spring bone AND another bone that resolves
+  // to the same kept parent must land once with the combined weight, not twice.
+  const acc = new Map<number, Map<number, number>>();
   if (skinIndex && skinWeight) {
     const localBones = mesh.skeleton.bones;
     for (let i = 0; i < vertexCount; i++) {
@@ -211,15 +214,25 @@ function buildMesh(
         const bone = localBones[skinIndex.getComponent(i, c)];
         const gIdx = bone ? boneToExport.get(bone) : undefined;
         if (gIdx === undefined) continue;
-        let cl = clusterMap.get(gIdx);
-        if (!cl) {
-          cl = { boneIndex: gIdx, indexes: [], weights: [] };
-          clusterMap.set(gIdx, cl);
+        let vm = acc.get(gIdx);
+        if (!vm) {
+          vm = new Map();
+          acc.set(gIdx, vm);
         }
-        cl.indexes.push(i);
-        cl.weights.push(w);
+        vm.set(i, (vm.get(i) ?? 0) + w);
       }
     }
+  }
+
+  const clusters: ExportCluster[] = [];
+  for (const [boneIndex, vm] of acc) {
+    const indexes: number[] = [];
+    const weights: number[] = [];
+    for (const [vi, w] of vm) {
+      indexes.push(vi);
+      weights.push(w);
+    }
+    clusters.push({ boneIndex, indexes, weights });
   }
 
   const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
@@ -237,6 +250,6 @@ function buildMesh(
     polygonVertexIndex,
     vertexCount,
     color: color as [number, number, number],
-    clusters: [...clusterMap.values()],
+    clusters,
   };
 }

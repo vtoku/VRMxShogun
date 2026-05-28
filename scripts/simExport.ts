@@ -2,12 +2,12 @@
 // (no GLTFLoader needed) to verify roots/names against real files.
 // Run: node --experimental-strip-types scripts/simExport.ts "<path>"
 import { readFileSync } from "node:fs";
-import { parseGLB } from "../src/vrm/glb.ts";
+import { parseGLB, sanitizeGlb } from "../src/vrm/glb.ts";
 
 const path = process.argv[2];
 const buf = readFileSync(path);
 const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-const { json } = parseGLB(ab as ArrayBuffer);
+const { json } = parseGLB(sanitizeGlb(ab as ArrayBuffer));
 const nodes: any[] = json.nodes ?? [];
 
 const parentOf = new Map<number, number>();

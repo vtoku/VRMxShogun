@@ -1,6 +1,6 @@
 import "./style.css";
 import type { Object3D } from "three";
-import { parseGLB } from "./vrm/glb";
+import { parseGLB, sanitizeGlb } from "./vrm/glb";
 import { extractVrm } from "./vrm/humanoid";
 import type { VrmInfo } from "./vrm/humanoid";
 import { extractSpringNodeIndices } from "./vrm/springs";
@@ -113,7 +113,8 @@ async function handleFile(file: File) {
   await nextPaint();
 
   try {
-    const buffer = await file.arrayBuffer();
+    // Patch invalid NaN/Infinity in the JSON chunk before either parser sees it.
+    const buffer = sanitizeGlb(await file.arrayBuffer());
     const { json } = parseGLB(buffer);
     const vrm: VrmInfo | null = extractVrm(json);
     const springNodes = extractSpringNodeIndices(json);
@@ -121,6 +122,17 @@ async function handleFile(file: File) {
 
     // Normalize VRM 0.x forward axis to match VRM 1.0 (three-vrm does the same).
     if (vrm?.version === "0.x") gltf.scene.rotateY(Math.PI);
+
+    // Bad accessor min/max (e.g. from NaN) yields wrong bounds; recompute from
+    // the actual vertices so framing/culling are correct.
+    gltf.scene.traverse((o) => {
+      const mesh = o as any;
+      if (mesh.isMesh && mesh.geometry) {
+        mesh.geometry.computeBoundingBox();
+        mesh.geometry.computeBoundingSphere();
+        mesh.frustumCulled = false;
+      }
+    });
 
     const { nodeToObj, objToNode } = buildNodeMaps(gltf);
     const base: BaseInput = {

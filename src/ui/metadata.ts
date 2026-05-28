@@ -97,12 +97,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     <button id="download-btn" class="download-btn">Download FBX</button>
 
     <div class="notes">
-      <p>Bone hierarchy and names are preserved exactly from the VRM; only the
-      bind-pose orientation is rebaked to world-aligned (the Maya convention
-      Shogun expects).</p>
-      <p>Textures, blendshapes, and animation are not exported.</p>
-      <p class="muted">If Shogun imports at the wrong scale or rotation, see the
-      README.</p>
+      <p>Textures, blendshapes, and animation aren't exported.</p>
       <p class="muted">Runs only in your browser.</p>
     </div>
 

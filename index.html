@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VRM → Shogun FBX</title>
+    <meta
+      name="description"
+      content="Convert a VRM humanoid avatar to a Vicon Shogun-compatible FBX, entirely in your browser."
+    />
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="topbar-title">VRM&nbsp;→&nbsp;Shogun FBX</div>
+        <div class="topbar-right">
+          <span class="version">v0.1</span>
+          <span class="dot">·</span>
+          <a
+            id="source-link"
+            href="https://github.com/vtoku/VRM2VICON"
+            target="_blank"
+            rel="noopener"
+            >Source</a
+          >
+        </div>
+      </header>
+
+      <main id="main">
+        <!-- Empty state -->
+        <section id="empty-state" class="empty-state">
+          <div id="dropzone" class="dropzone" tabindex="0" role="button"
+               aria-label="Drop a VRM file here, or click to pick one">
+            <div class="dropzone-inner">
+              <p class="dropzone-title">Drop a <code>.vrm</code> file here, or click to pick</p>
+              <p class="dropzone-sub">Runs entirely in your browser. Nothing is uploaded.</p>
+            </div>
+          </div>
+          <p id="empty-error" class="error-text" hidden></p>
+          <p class="disclaimer">
+            Unofficial, unaffiliated tool. "Vicon" and "Shogun" are trademarks of
+            Vicon Motion Systems Ltd; "VRM" of the VRM Consortium.
+          </p>
+        </section>
+
+        <!-- Loaded state -->
+        <section id="loaded-state" class="loaded-state" hidden>
+          <div id="viewport" class="viewport"></div>
+          <aside class="panel" id="panel"></aside>
+        </section>
+      </main>
+
+      <input id="file-input" type="file" accept=".vrm,.glb" hidden />
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

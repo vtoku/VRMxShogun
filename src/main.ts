@@ -133,14 +133,17 @@ async function handleFile(file: File) {
     };
 
     // Let the bar paint before the heavy synchronous build (rebake + clusters).
+    // Defaults: strip springs ON (when present) and gizmos visible.
     await nextPaint();
-    const { result, toFbx } = buildModel({ ...base, stripSprings: false });
+    const stripDefault = base.springNodes.size > 0;
+    const { result, toFbx } = buildModel({ ...base, stripSprings: stripDefault });
 
     // Reveal the loaded layout behind the loading overlay.
     if (preview) preview.dispose();
     loadedState.hidden = false;
     preview = new PreviewScene(viewport);
     preview.setModel(gltf.scene);
+    preview.setGizmosVisible(true);
     preview.setBoneGizmos(gizmoPositions(result));
 
     loaded = { base, file, toFbx };

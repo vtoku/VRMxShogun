@@ -3,6 +3,25 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const BG = 0x0e1014;
 
+// A billboard text label (X/Y/Z) for the root axis gizmo.
+function makeAxisLabel(text: string, color: string): THREE.Sprite {
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext("2d")!;
+  ctx.font = "bold 50px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = color;
+  ctx.fillText(text, 32, 34);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.renderOrder = 1001;
+  return sprite;
+}
+
 export class PreviewScene {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
@@ -102,13 +121,26 @@ export class PreviewScene {
       group.add(ax);
     }
     // Export root frame at the world origin (the FBX scene root), drawn larger
-    // so it's distinguishable from the per-bone gizmos.
-    const root = new THREE.AxesHelper(size * 3.5);
+    // so it's distinguishable from the per-bone gizmos, with X/Y/Z labels.
+    const rootSize = size * 3.5;
+    const root = new THREE.AxesHelper(rootSize);
     const rootMat = root.material as THREE.Material;
     rootMat.depthTest = false;
     rootMat.transparent = true;
     root.renderOrder = 1000;
     group.add(root);
+
+    const ld = rootSize * 1.18;
+    const ls = size * 1.9;
+    const addLabel = (t: string, color: string, x: number, y: number, z: number) => {
+      const sp = makeAxisLabel(t, color);
+      sp.position.set(x, y, z);
+      sp.scale.setScalar(ls);
+      group.add(sp);
+    };
+    addLabel("X", "#ff5555", ld, 0, 0);
+    addLabel("Y", "#55ff77", 0, ld, 0);
+    addLabel("Z", "#5588ff", 0, 0, ld);
 
     group.visible = this.gizmosVisible;
     this.gizmos = group;
@@ -124,10 +156,13 @@ export class PreviewScene {
     if (!this.gizmos) return;
     this.scene.remove(this.gizmos);
     this.gizmos.traverse((o) => {
-      const ax = o as THREE.AxesHelper;
-      if (ax.geometry) ax.geometry.dispose();
-      const mat = (ax as any).material as THREE.Material | undefined;
-      if (mat) mat.dispose();
+      const any = o as any;
+      if (any.geometry) any.geometry.dispose();
+      const mat = any.material as (THREE.Material & { map?: THREE.Texture }) | undefined;
+      if (mat) {
+        mat.map?.dispose();
+        mat.dispose();
+      }
     });
     this.gizmos = null;
   }

@@ -67,7 +67,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
   const stripOption =
     data.springCount > 0
       ? `<label class="opt">
-          <input type="checkbox" id="strip-springs" />
+          <input type="checkbox" id="strip-springs" checked />
           <span>Strip spring bones (${data.springCount}) — reweights hair/skirt to parent</span>
         </label>`
       : "";
@@ -97,7 +97,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     <div class="options">
       ${stripOption}
       <label class="opt">
-        <input type="checkbox" id="show-bones" />
+        <input type="checkbox" id="show-bones" checked />
         <span>Show export bones (axis gizmos)</span>
       </label>
     </div>

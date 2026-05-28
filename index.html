@@ -13,13 +13,15 @@
   <body>
     <div id="app">
       <header class="topbar">
-        <div class="topbar-title">VRM&nbsp;→&nbsp;Shogun FBX</div>
+        <div class="logo" aria-label="VRM x Shogun">
+          <span class="logo-word">VRM</span><span class="logo-x">✕</span><span class="logo-word">SHOGUN</span>
+        </div>
         <div class="topbar-right">
           <span class="version">v0.1</span>
           <span class="dot">·</span>
           <a
             id="source-link"
-            href="https://github.com/vtoku/VRM2VICON"
+            href="https://github.com/vtoku/VRMxShogun"
             target="_blank"
             rel="noopener"
             >Source</a
@@ -30,6 +32,12 @@
       <main id="main">
         <!-- Empty state -->
         <section id="empty-state" class="empty-state">
+          <div class="hero">
+            <div class="logo logo-hero" aria-label="VRM x Shogun">
+              <span class="logo-word">VRM</span><span class="logo-x">✕</span><span class="logo-word">SHOGUN</span>
+            </div>
+            <p class="hero-sub">FBX converter for Vicon Shogun</p>
+          </div>
           <div id="dropzone" class="dropzone" tabindex="0" role="button"
                aria-label="Drop a VRM file here, or click to pick one">
             <div class="dropzone-inner">
@@ -42,6 +50,15 @@
             Unofficial, unaffiliated tool. "Vicon" and "Shogun" are trademarks of
             Vicon Motion Systems Ltd; "VRM" of the VRM Consortium.
           </p>
+        </section>
+
+        <!-- Loading state -->
+        <section id="loading-state" class="loading-state" hidden>
+          <div class="loading-box">
+            <p class="loading-label">Loading <span id="loading-name"></span></p>
+            <div class="progress"><div class="progress-bar"></div></div>
+            <p class="loading-sub">Parsing the model and building the skeleton…</p>
+          </div>
         </section>
 
         <!-- Loaded state -->

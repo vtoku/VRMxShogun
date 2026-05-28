@@ -8,6 +8,8 @@ import { buildModel, downloadText, sanitizeFilename } from "./fbx/export";
 import { renderPanel } from "./ui/metadata";
 
 const emptyState = document.getElementById("empty-state")!;
+const loadingState = document.getElementById("loading-state")!;
+const loadingName = document.getElementById("loading-name")!;
 const loadedState = document.getElementById("loaded-state")!;
 const dropzone = document.getElementById("dropzone")!;
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
@@ -25,13 +27,29 @@ function clearError() {
   errorEl.hidden = true;
 }
 
+function showLoading(name: string) {
+  emptyState.hidden = true;
+  loadedState.hidden = true;
+  loadingName.textContent = name;
+  loadingState.hidden = false;
+}
+
 function showEmpty() {
+  loadingState.hidden = true;
   loadedState.hidden = true;
   emptyState.hidden = false;
   if (preview) {
     preview.dispose();
     preview = null;
   }
+}
+
+// Yield to the browser so the loading bar paints before the synchronous,
+// main-thread-blocking parse + build runs. (Two frames = a guaranteed paint.)
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
 }
 
 async function handleFile(file: File) {
@@ -41,55 +59,37 @@ async function handleFile(file: File) {
     return;
   }
 
-  let buffer: ArrayBuffer;
-  try {
-    buffer = await file.arrayBuffer();
-  } catch {
-    showError("Could not read the file.");
-    return;
-  }
+  showLoading(file.name);
+  await nextPaint();
 
-  let vrm: VrmInfo | null = null;
   try {
+    const buffer = await file.arrayBuffer();
     const { json } = parseGLB(buffer);
-    vrm = extractVrm(json);
-  } catch (e) {
-    showError(e instanceof Error ? e.message : "Failed to parse the file.");
-    return;
-  }
+    const vrm: VrmInfo | null = extractVrm(json);
+    const gltf = await loadGltf(buffer);
 
-  let gltf;
-  try {
-    gltf = await loadGltf(buffer);
-  } catch (e) {
-    showError(
-      "Failed to load the 3D model: " +
-        (e instanceof Error ? e.message : String(e)),
-    );
-    return;
-  }
+    // Normalize VRM 0.x forward axis to match VRM 1.0 (three-vrm does the same).
+    if (vrm?.version === "0.x") gltf.scene.rotateY(Math.PI);
 
-  // Normalize VRM 0.x forward axis to match VRM 1.0 (three-vrm does the same).
-  if (vrm?.version === "0.x") gltf.scene.rotateY(Math.PI);
+    // Let the bar paint before the heavy synchronous build (rebake + clusters).
+    await nextPaint();
+    const { result, toFbx } = buildModel(gltf.scene, vrm);
 
-  // Swap to loaded layout.
-  emptyState.hidden = true;
-  loadedState.hidden = false;
-  if (preview) preview.dispose();
-  preview = new PreviewScene(viewport);
-  preview.setModel(gltf.scene);
+    // Reveal the loaded layout.
+    if (preview) preview.dispose();
+    loadingState.hidden = true;
+    loadedState.hidden = false;
+    preview = new PreviewScene(viewport);
+    preview.setModel(gltf.scene);
 
-  // Build the export model (rebake + skin clusters) up front.
-  const { result, toFbx } = buildModel(gltf.scene, vrm);
-
-  const handles = renderPanel(panel, {
-    filename: file.name,
-    fileSize: file.size,
-    vrm,
-    boneCount: result.model.boneCount,
-    meshCount: result.model.meshes.length,
-    vertexCount: result.model.totalVertices,
-  });
+    const handles = renderPanel(panel, {
+      filename: file.name,
+      fileSize: file.size,
+      vrm,
+      boneCount: result.model.boneCount,
+      meshCount: result.model.meshes.length,
+      vertexCount: result.model.totalVertices,
+    });
 
   handles.downloadBtn.addEventListener("click", () => {
     const btn = handles.downloadBtn;
@@ -100,7 +100,7 @@ async function handleFile(file: File) {
     setTimeout(() => {
       try {
         const fbx = toFbx();
-        downloadText(`${sanitizeFilename(file.name)}.fbx`, fbx);
+        downloadText(`${sanitizeFilename(file.name)}_retarget.fbx`, fbx);
       } catch (e) {
         showError("FBX export failed: " + (e instanceof Error ? e.message : String(e)));
       } finally {
@@ -110,10 +110,14 @@ async function handleFile(file: File) {
     }, 30);
   });
 
-  handles.reloadLink.addEventListener("click", () => {
-    fileInput.value = "";
+    handles.reloadLink.addEventListener("click", () => {
+      fileInput.value = "";
+      showEmpty();
+    });
+  } catch (e) {
     showEmpty();
-  });
+    showError(e instanceof Error ? e.message : "Failed to load the file.");
+  }
 }
 
 // ---- drag & drop (whole page) + click-to-pick ---------------------------

@@ -47,6 +47,8 @@ export interface BuildInput {
   /** spring bone node indices (for stripping / display). */
   springNodes: Set<number>;
   stripSprings: boolean;
+  /** export the skeleton only (no meshes/skinning). */
+  skeletonOnly?: boolean;
 }
 
 export interface BuildResult {
@@ -142,9 +144,9 @@ export function buildExportModel(input: BuildInput, idGen: () => number): BuildR
 
   const skinned = collectSkinnedMeshes(scene);
   let totalVertices = 0;
-  const meshes: ExportMesh[] = skinned.map((mesh, mi) =>
-    buildMesh(mesh, mi, objToNode, nodeToExport),
-  );
+  const meshes: ExportMesh[] = input.skeletonOnly
+    ? []
+    : skinned.map((mesh, mi) => buildMesh(mesh, mi, objToNode, nodeToExport));
   for (const m of meshes) totalVertices += m.vertexCount;
 
   const springBoneCount = [...input.springNodes].filter((n) => exportSet.has(n)).length;

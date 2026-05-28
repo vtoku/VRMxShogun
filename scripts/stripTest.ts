@@ -114,5 +114,29 @@ function check(label: string, cond: boolean) {
   check("Hips is root", bone("Hips").parentIndex === -1);
 }
 
+// ---- Test 3: skeleton-only export drops meshes but keeps bones ----
+{
+  const hips = new THREE.Bone();
+  hips.position.set(0, 1, 0);
+  const scene = new THREE.Group();
+  scene.add(hips);
+  scene.updateMatrixWorld(true);
+  const input: BuildInput = {
+    scene,
+    vrm: null,
+    json: { nodes: [{ name: "Hips" }], skins: [{ joints: [0] }] },
+    nodeToObj: new Map<number, THREE.Object3D>([[0, hips]]),
+    objToNode: new Map<THREE.Object3D, number>([[hips, 0]]),
+    springNodes: new Set(),
+    stripSprings: false,
+    skeletonOnly: true,
+  };
+  let id = 3000;
+  const r = buildExportModel(input, () => ++id);
+  console.log("T3 meshes:", r.model.meshes.length, "bones:", r.model.boneCount);
+  check("skeleton-only: no meshes", r.model.meshes.length === 0);
+  check("skeleton-only: bones present", r.model.boneCount === 1);
+}
+
 console.log(pass ? "BUILD TESTS PASS" : "BUILD TESTS FAIL");
 if (!pass) process.exit(1);

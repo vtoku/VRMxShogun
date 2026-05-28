@@ -17,6 +17,7 @@ export interface PanelHandles {
   reloadLink: HTMLButtonElement;
   stripCheckbox: HTMLInputElement | null;
   showBonesCheckbox: HTMLInputElement;
+  skeletonCheckbox: HTMLInputElement;
 }
 
 function fmtSize(bytes: number): string {
@@ -100,6 +101,10 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
         <input type="checkbox" id="show-bones" checked />
         <span>Show export bones (axis gizmos)</span>
       </label>
+      <label class="opt">
+        <input type="checkbox" id="skeleton-only" />
+        <span>Skeleton only — no meshes (preview shows diamond bones)</span>
+      </label>
     </div>
 
     <button id="download-btn" class="download-btn">Download FBX</button>
@@ -117,5 +122,6 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     reloadLink: panel.querySelector<HTMLButtonElement>("#reload-link")!,
     stripCheckbox: panel.querySelector<HTMLInputElement>("#strip-springs"),
     showBonesCheckbox: panel.querySelector<HTMLInputElement>("#show-bones")!,
+    skeletonCheckbox: panel.querySelector<HTMLInputElement>("#skeleton-only")!,
   };
 }

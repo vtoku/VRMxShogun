@@ -31,6 +31,8 @@ export class PreviewScene {
   private current: THREE.Object3D | null = null;
   private gizmos: THREE.Group | null = null;
   private gizmosVisible = false;
+  private wireframe: THREE.LineSegments | null = null;
+  private wireframeVisible = false;
   private renderWaiters: Array<() => void> = [];
   private ro: ResizeObserver;
   private rafId = 0;
@@ -152,6 +154,40 @@ export class PreviewScene {
     if (this.gizmos) this.gizmos.visible = visible;
   }
 
+  // Diamond/octahedral bone wireframe (flat line-segment endpoints, meters).
+  setBoneWireframe(positions: number[]) {
+    this.clearWireframe();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xb7c0cc,
+      transparent: true,
+      depthTest: false,
+    });
+    const seg = new THREE.LineSegments(geo, mat);
+    seg.renderOrder = 998;
+    seg.visible = this.wireframeVisible;
+    this.wireframe = seg;
+    this.scene.add(seg);
+  }
+
+  setWireframeVisible(visible: boolean) {
+    this.wireframeVisible = visible;
+    if (this.wireframe) this.wireframe.visible = visible;
+  }
+
+  setModelVisible(visible: boolean) {
+    if (this.current) this.current.visible = visible;
+  }
+
+  private clearWireframe() {
+    if (!this.wireframe) return;
+    this.scene.remove(this.wireframe);
+    this.wireframe.geometry.dispose();
+    (this.wireframe.material as THREE.Material).dispose();
+    this.wireframe = null;
+  }
+
   private clearGizmos() {
     if (!this.gizmos) return;
     this.scene.remove(this.gizmos);
@@ -185,6 +221,7 @@ export class PreviewScene {
 
   clearModel() {
     this.clearGizmos();
+    this.clearWireframe();
     if (!this.current) return;
     this.scene.remove(this.current);
     this.current.traverse((obj) => {

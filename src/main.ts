@@ -8,6 +8,7 @@ import { loadGltf } from "./vrm/loadGltf";
 import { PreviewScene } from "./preview/scene";
 import { buildModel, downloadText, sanitizeFilename } from "./fbx/export";
 import type { BuildInput, BuildResult } from "./convert/build";
+import { boneDiamondEdges } from "./convert/boneViz";
 import { renderPanel } from "./ui/metadata";
 import type { PanelHandles } from "./ui/metadata";
 
@@ -74,6 +75,16 @@ function gizmoPositions(result: BuildResult): Array<[number, number, number]> {
     b.worldPos[1] / 100,
     b.worldPos[2] / 100,
   ]);
+}
+
+// Update the preview's bone gizmos + diamond wireframe, and toggle whether the
+// mesh or the wireframe armature is shown (skeleton-only mode).
+function applyBoneVisuals(result: BuildResult, skeletonOnly: boolean) {
+  if (!preview) return;
+  preview.setBoneGizmos(gizmoPositions(result));
+  preview.setBoneWireframe(boneDiamondEdges(result.model.bones, 0.01));
+  preview.setWireframeVisible(skeletonOnly);
+  preview.setModelVisible(!skeletonOnly);
 }
 
 // Node-index <-> object maps from GLTFLoader associations, so the export uses
@@ -156,7 +167,7 @@ async function handleFile(file: File) {
     preview = new PreviewScene(viewport);
     preview.setModel(gltf.scene);
     preview.setGizmosVisible(true);
-    preview.setBoneGizmos(gizmoPositions(result));
+    applyBoneVisuals(result, false);
 
     loaded = { base, file, toFbx };
 
@@ -211,6 +222,8 @@ function wireHandlers(handles: PanelHandles) {
     preview?.setGizmosVisible(handles.showBonesCheckbox.checked);
   });
 
+  handles.skeletonCheckbox.addEventListener("change", () => void reprocess(handles));
+
   if (handles.stripCheckbox) {
     handles.stripCheckbox.addEventListener("change", () => void reprocess(handles));
   }
@@ -221,14 +234,19 @@ function wireHandlers(handles: PanelHandles) {
 async function reprocess(handles: PanelHandles) {
   if (!loaded || !preview) return;
   const strip = handles.stripCheckbox?.checked ?? false;
+  const skeletonOnly = handles.skeletonCheckbox.checked;
 
   loadingName.textContent = loaded.file.name;
   loadingState.hidden = false;
   await nextPaint();
 
-  const { result, toFbx } = buildModel({ ...loaded.base, stripSprings: strip });
+  const { result, toFbx } = buildModel({
+    ...loaded.base,
+    stripSprings: strip,
+    skeletonOnly,
+  });
   loaded.toFbx = toFbx;
-  preview.setBoneGizmos(gizmoPositions(result));
+  applyBoneVisuals(result, skeletonOnly);
   const count = panel.querySelector("#bone-count");
   if (count) count.textContent = String(result.model.boneCount);
 

@@ -101,6 +101,15 @@ export class PreviewScene {
       ax.renderOrder = 999;
       group.add(ax);
     }
+    // Export root frame at the world origin (the FBX scene root), drawn larger
+    // so it's distinguishable from the per-bone gizmos.
+    const root = new THREE.AxesHelper(size * 3.5);
+    const rootMat = root.material as THREE.Material;
+    rootMat.depthTest = false;
+    rootMat.transparent = true;
+    root.renderOrder = 1000;
+    group.add(root);
+
     group.visible = this.gizmosVisible;
     this.gizmos = group;
     this.scene.add(group);

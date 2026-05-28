@@ -334,7 +334,7 @@ body.dragging .dropzone {
   width: 100%;
   margin-top: 14px;
   padding: 11px;
-  background: var(--accent);
+  background: #e5202b;
   color: #fff;
   border: none;
   border-radius: var(--radius);
@@ -342,10 +342,12 @@ body.dragging .dropzone {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  box-shadow: 0 0 0 rgba(229, 32, 43, 0);
+  transition: background 0.15s, box-shadow 0.15s;
 }
 .download-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: #f5333d;
+  box-shadow: 0 0 16px rgba(229, 32, 43, 0.45);
 }
 .download-btn:disabled {
   opacity: 0.6;

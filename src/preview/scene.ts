@@ -79,7 +79,9 @@ export class PreviewScene {
   private resize() {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    this.renderer.setSize(w, h, false);
+    // updateStyle=true so the canvas CSS size matches the viewport; with
+    // pixelRatio>1 the default-false leaves the canvas oversized and offset.
+    this.renderer.setSize(w, h, true);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }

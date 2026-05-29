@@ -218,9 +218,11 @@ export class PreviewScene {
     // distance to fit the largest dimension in view, plus a small margin
     const dist = (maxDim / (2 * Math.tan((this.camera.fov * Math.PI) / 360))) * 1.4;
 
-    // Center on the bbox center with a level, front-on camera.
-    this.controls.target.copy(center);
-    this.camera.position.set(center.x, center.y, center.z + dist);
+    // VRMs are rooted at the origin, so center horizontally on the root axis
+    // (x=z=0) and vertically on the body center — avoids offset from asymmetric
+    // meshes/accessories.
+    this.controls.target.set(0, center.y, 0);
+    this.camera.position.set(0, center.y, dist);
     this.camera.near = maxDim / 100;
     this.camera.far = maxDim * 100;
     this.camera.updateProjectionMatrix();

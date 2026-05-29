@@ -1,4 +1,5 @@
 import "./style.css";
+import { Box3, Vector3 } from "three";
 import type { Object3D } from "three";
 import { parseGLB, sanitizeGlb } from "./vrm/glb";
 import { extractVrm } from "./vrm/humanoid";
@@ -68,6 +69,30 @@ function nextPaint(): Promise<void> {
   );
 }
 
+// Bounding box (meters) of just the humanoid body bones, so the preview frames
+// the body and ignores wings/props/hair that would otherwise off-center it.
+function humanoidFocusBox(
+  vrm: VrmInfo | null,
+  nodeToObj: Map<number, Object3D>,
+): Box3 | null {
+  if (!vrm) return null;
+  const box = new Box3();
+  const v = new Vector3();
+  let any = false;
+  for (const ref of Object.values(vrm.humanoidBones)) {
+    const obj = nodeToObj.get(ref.nodeIndex);
+    if (obj) {
+      obj.getWorldPosition(v);
+      box.expandByPoint(v);
+      any = true;
+    }
+  }
+  if (!any) return null;
+  const size = box.getSize(new Vector3());
+  box.expandByScalar(Math.max(size.x, size.y, size.z) * 0.12); // headroom for head/feet/hands mesh
+  return box;
+}
+
 // Exported bone world positions (meters) for the preview axis gizmos.
 function gizmoPositions(result: BuildResult): Array<[number, number, number]> {
   return result.model.bones.map((b) => [
@@ -77,12 +102,30 @@ function gizmoPositions(result: BuildResult): Array<[number, number, number]> {
   ]);
 }
 
+// Export-bone indices above the humanoid hips (armature/container chain), so the
+// preview wireframe starts at the pelvis instead of drawing giant origin->hip bones.
+function hipsAncestors(result: BuildResult, vrm: VrmInfo | null): Set<number> {
+  const skip = new Set<number>();
+  const hipsName = vrm?.humanoidBones?.hips?.nodeName;
+  if (!hipsName) return skip;
+  const bones = result.model.bones;
+  const hipsIdx = bones.findIndex((b) => b.name === hipsName);
+  if (hipsIdx < 0) return skip;
+  let p = bones[hipsIdx].parentIndex;
+  while (p >= 0) {
+    skip.add(p);
+    p = bones[p].parentIndex;
+  }
+  return skip;
+}
+
 // Update the preview's bone gizmos + diamond wireframe, and toggle whether the
 // mesh or the wireframe armature is shown (skeleton-only mode).
-function applyBoneVisuals(result: BuildResult, skeletonOnly: boolean) {
+function applyBoneVisuals(result: BuildResult, vrm: VrmInfo | null, skeletonOnly: boolean) {
   if (!preview) return;
+  const skip = hipsAncestors(result, vrm);
   preview.setBoneGizmos(gizmoPositions(result));
-  preview.setBoneWireframe(boneDiamondEdges(result.model.bones, 0.01));
+  preview.setBoneWireframe(boneDiamondEdges(result.model.bones, 0.01, skip));
   preview.setWireframeVisible(skeletonOnly);
   preview.setModelVisible(!skeletonOnly);
 }
@@ -165,9 +208,9 @@ async function handleFile(file: File) {
     if (preview) preview.dispose();
     loadedState.hidden = false;
     preview = new PreviewScene(viewport);
-    preview.setModel(gltf.scene);
+    preview.setModel(gltf.scene, humanoidFocusBox(vrm, nodeToObj) ?? undefined);
     preview.setGizmosVisible(true);
-    applyBoneVisuals(result, false);
+    applyBoneVisuals(result, vrm, false);
 
     loaded = { base, file, toFbx };
 
@@ -246,7 +289,7 @@ async function reprocess(handles: PanelHandles) {
     skeletonOnly,
   });
   loaded.toFbx = toFbx;
-  applyBoneVisuals(result, skeletonOnly);
+  applyBoneVisuals(result, loaded.base.vrm, skeletonOnly);
   const count = panel.querySelector("#bone-count");
   if (count) count.textContent = String(result.model.boneCount);
 

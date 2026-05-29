@@ -100,11 +100,11 @@ export class PreviewScene {
     return new Promise((resolve) => this.renderWaiters.push(resolve));
   }
 
-  setModel(object: THREE.Object3D) {
+  setModel(object: THREE.Object3D, focusBox?: THREE.Box3) {
     this.clearModel();
     this.current = object;
     this.scene.add(object);
-    this.frame(object);
+    this.frame(object, focusBox);
   }
 
   // Axis gizmos at each exported bone's world position. Bones are rebaked to
@@ -203,9 +203,14 @@ export class PreviewScene {
     this.gizmos = null;
   }
 
-  private frame(object: THREE.Object3D) {
+  // focusBox (if given, e.g. the humanoid body bones) is framed instead of the
+  // full object bounds, so wings/props/hair don't shove the body off-center.
+  private frame(object: THREE.Object3D, focusBox?: THREE.Box3) {
     object.updateWorldMatrix(true, true);
-    const box = new THREE.Box3().setFromObject(object);
+    const box =
+      focusBox && !focusBox.isEmpty()
+        ? focusBox
+        : new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());

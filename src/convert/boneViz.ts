@@ -1,9 +1,9 @@
 import type { ExportBone } from "./build";
 
 // Diamond/octahedral bone wireframe (Blender-style limbs) for the PREVIEW only.
-// Returns a flat list of line-segment endpoints (pairs of xyz) scaled to the
-// preview's units. Nothing is baked into the FBX — skeleton-only export is just
-// the LimbNode skeleton.
+// Every parent->child link is drawn as its own diamond, so branching joints
+// (pelvis -> both legs) all read as bones. `skip` holds bones to omit entirely
+// (e.g. the armature/container chain above the hips). Nothing is baked to FBX.
 
 type V = [number, number, number];
 const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -27,7 +27,11 @@ const EDGES = [
   [2, 3], [3, 4], [4, 5], [5, 2],
 ];
 
-export function boneDiamondEdges(bones: ExportBone[], scale: number): number[] {
+export function boneDiamondEdges(
+  bones: ExportBone[],
+  scale: number,
+  skip: Set<number> = new Set(),
+): number[] {
   const childrenOf = new Map<number, number[]>();
   bones.forEach((b, i) => {
     if (b.parentIndex >= 0) {
@@ -38,21 +42,7 @@ export function boneDiamondEdges(bones: ExportBone[], scale: number): number[] {
   });
 
   const out: number[] = [];
-  bones.forEach((bone, i) => {
-    if (bone.parentIndex < 0) return; // skip the armature root's diamond
-    const head = bone.worldPos as V;
-    const kids = childrenOf.get(i) ?? [];
-    let tail: V;
-    if (kids.length > 0) {
-      tail = bones[kids[0]].worldPos as V;
-    } else if (bone.parentIndex >= 0) {
-      const pdir = norm(sub(head, bones[bone.parentIndex].worldPos as V));
-      const plen = length(sub(head, bones[bone.parentIndex].worldPos as V));
-      tail = add(head, mul(pdir, Math.max(plen * 0.4, 1)));
-    } else {
-      tail = add(head, [0, 5, 0]);
-    }
-
+  const emit = (head: V, tail: V) => {
     let axis = sub(tail, head);
     let L = length(axis);
     if (L < 1e-3) {
@@ -79,20 +69,26 @@ export function boneDiamondEdges(bones: ExportBone[], scale: number): number[] {
         verts[b][0] * scale, verts[b][1] * scale, verts[b][2] * scale,
       );
     }
-  });
+  };
 
-  // Connection lines from each bone to its parent, so branching joints (e.g.
-  // pelvis -> both legs) clearly show the parenting, not just the first child.
-  bones.forEach((bone) => {
-    if (bone.parentIndex < 0) return; // root has no parent
-    if (bones[bone.parentIndex].parentIndex < 0) return; // skip pelvis -> armature root
-    const p = bones[bone.parentIndex].worldPos as V;
-    const h = bone.worldPos as V;
-    out.push(
-      p[0] * scale, p[1] * scale, p[2] * scale,
-      h[0] * scale, h[1] * scale, h[2] * scale,
-    );
+  bones.forEach((bone, i) => {
+    if (skip.has(i)) return;
+    const head = bone.worldPos as V;
+    const kids = (childrenOf.get(i) ?? []).filter((k) => !skip.has(k));
+    if (kids.length > 0) {
+      // one diamond per child so every branch is a bone
+      for (const k of kids) emit(head, bones[k].worldPos as V);
+    } else {
+      // leaf: short stub continuing away from the parent
+      let dir: V = [0, 1, 0];
+      let plen = 5;
+      if (bone.parentIndex >= 0) {
+        const p = bones[bone.parentIndex].worldPos as V;
+        dir = norm(sub(head, p));
+        plen = length(sub(head, p));
+      }
+      emit(head, add(head, mul(dir, Math.max(plen * 0.4, 1))));
+    }
   });
-
   return out;
 }

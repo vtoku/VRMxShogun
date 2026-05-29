@@ -204,15 +204,18 @@ export class PreviewScene {
   }
 
   private frame(object: THREE.Object3D) {
+    object.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const dist = maxDim / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    // distance to fit the largest dimension in view, plus a small margin
+    const dist = (maxDim / (2 * Math.tan((this.camera.fov * Math.PI) / 360))) * 1.4;
 
+    // Center on the bbox center with a level, front-on camera.
     this.controls.target.copy(center);
-    this.camera.position.set(center.x, center.y + size.y * 0.1, center.z + dist * 1.6);
+    this.camera.position.set(center.x, center.y, center.z + dist);
     this.camera.near = maxDim / 100;
     this.camera.far = maxDim * 100;
     this.camera.updateProjectionMatrix();

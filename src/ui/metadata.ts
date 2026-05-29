@@ -69,7 +69,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     data.springCount > 0
       ? `<label class="opt">
           <input type="checkbox" id="strip-springs" checked />
-          <span>Strip spring bones (${data.springCount}) — reweights hair/skirt to parent</span>
+          <span>Strip spring bones (${data.springCount})</span>
         </label>`
       : "";
 
@@ -99,11 +99,11 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
       ${stripOption}
       <label class="opt">
         <input type="checkbox" id="show-bones" checked />
-        <span>Show export bones (axis gizmos)</span>
+        <span>Show bones</span>
       </label>
       <label class="opt">
         <input type="checkbox" id="skeleton-only" />
-        <span>Skeleton only — no meshes (preview shows diamond bones)</span>
+        <span>Skeleton only</span>
       </label>
     </div>
 

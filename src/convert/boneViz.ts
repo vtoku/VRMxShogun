@@ -39,6 +39,7 @@ export function boneDiamondEdges(bones: ExportBone[], scale: number): number[] {
 
   const out: number[] = [];
   bones.forEach((bone, i) => {
+    if (bone.parentIndex < 0) return; // skip the armature root's diamond
     const head = bone.worldPos as V;
     const kids = childrenOf.get(i) ?? [];
     let tail: V;
@@ -79,5 +80,19 @@ export function boneDiamondEdges(bones: ExportBone[], scale: number): number[] {
       );
     }
   });
+
+  // Connection lines from each bone to its parent, so branching joints (e.g.
+  // pelvis -> both legs) clearly show the parenting, not just the first child.
+  bones.forEach((bone) => {
+    if (bone.parentIndex < 0) return; // root has no parent
+    if (bones[bone.parentIndex].parentIndex < 0) return; // skip pelvis -> armature root
+    const p = bones[bone.parentIndex].worldPos as V;
+    const h = bone.worldPos as V;
+    out.push(
+      p[0] * scale, p[1] * scale, p[2] * scale,
+      h[0] * scale, h[1] * scale, h[2] * scale,
+    );
+  });
+
   return out;
 }

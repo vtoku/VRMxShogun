@@ -49,6 +49,8 @@ export interface BuildInput {
   stripSprings: boolean;
   /** export the skeleton only (no meshes/skinning). */
   skeletonOnly?: boolean;
+  /** pre-rotate the exported FBX +90° about X (face-down fix for Z-up Shogun). */
+  rotateExport?: boolean;
 }
 
 export interface BuildResult {

@@ -15,7 +15,10 @@ export function buildModel(input: BuildInput): {
 } {
   const idGen = makeIdGen();
   const result = buildExportModel(input, idGen);
-  return { result, toFbx: () => writeFbx(result.model, idGen) };
+  return {
+    result,
+    toFbx: () => writeFbx(result.model, idGen, { rotate: input.rotateExport }),
+  };
 }
 
 export function sanitizeFilename(name: string): string {

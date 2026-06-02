@@ -266,6 +266,7 @@ function wireHandlers(handles: PanelHandles) {
   });
 
   handles.skeletonCheckbox.addEventListener("change", () => void reprocess(handles));
+  handles.rotateCheckbox.addEventListener("change", () => void reprocess(handles));
 
   if (handles.stripCheckbox) {
     handles.stripCheckbox.addEventListener("change", () => void reprocess(handles));
@@ -278,6 +279,7 @@ async function reprocess(handles: PanelHandles) {
   if (!loaded || !preview) return;
   const strip = handles.stripCheckbox?.checked ?? false;
   const skeletonOnly = handles.skeletonCheckbox.checked;
+  const rotateExport = handles.rotateCheckbox.checked;
 
   loadingName.textContent = loaded.file.name;
   loadingState.hidden = false;
@@ -287,6 +289,7 @@ async function reprocess(handles: PanelHandles) {
     ...loaded.base,
     stripSprings: strip,
     skeletonOnly,
+    rotateExport,
   });
   loaded.toFbx = toFbx;
   applyBoneVisuals(result, loaded.base.vrm, skeletonOnly);

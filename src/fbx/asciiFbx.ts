@@ -28,9 +28,39 @@ function transformInverse(p: [number, number, number]): number[] {
   return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -p[0], -p[1], -p[2], 1];
 }
 
-export function writeFbx(model: ExportModel, idGen: () => number): string {
+export interface WriteOpts {
+  /** Pre-rotate exported content +90° about X so it lands upright in a Z-up
+   *  Shogun project (otherwise the Y-up FBX imports face-down). Preview is
+   *  unaffected — this only changes the FBX. */
+  rotate?: boolean;
+}
+
+export function writeFbx(
+  model: ExportModel,
+  idGen: () => number,
+  opts: WriteOpts = {},
+): string {
   const L: string[] = [];
   const w = (s = "") => L.push(s);
+
+  // Rotation table: (x,y,z) -> (x,-z,y) is +90° about X. Apply once, up-front,
+  // to bone world positions and to mesh vertices/normals.
+  const rotPt = opts.rotate
+    ? (p: number[]): [number, number, number] => [p[0], -p[2], p[1]]
+    : (p: number[]): [number, number, number] => [p[0], p[1], p[2]];
+  const rotFlat = (a: number[]): number[] => {
+    if (!opts.rotate) return a;
+    const out = new Array<number>(a.length);
+    for (let i = 0; i < a.length; i += 3) {
+      out[i] = a[i];
+      out[i + 1] = -a[i + 2];
+      out[i + 2] = a[i + 1];
+    }
+    return out;
+  };
+  const boneWp = model.bones.map((b) => rotPt(b.worldPos));
+  const meshPos = model.meshes.map((m) => rotFlat(m.positions));
+  const meshNrm = model.meshes.map((m) => rotFlat(m.normals));
 
   // ---- ids for non-bone objects -----------------------------------------
   const boneAttrId = model.bones.map(() => idGen());
@@ -147,7 +177,7 @@ export function writeFbx(model: ExportModel, idGen: () => number): string {
 
     w(`\tGeometry: ${ids.geo}, "Geometry::${m.name}", "Mesh" {`);
     w(`\t\tVertices: *${m.positions.length} {`);
-    w(`\t\t\ta: ${arr(m.positions)}`);
+    w(`\t\t\ta: ${arr(meshPos[mi])}`);
     w("\t\t}");
     w(`\t\tPolygonVertexIndex: *${m.polygonVertexIndex.length} {`);
     w(`\t\t\ta: ${arr(m.polygonVertexIndex)}`);
@@ -159,7 +189,7 @@ export function writeFbx(model: ExportModel, idGen: () => number): string {
     w('\t\t\tMappingInformationType: "ByPolygonVertex"');
     w('\t\t\tReferenceInformationType: "Direct"');
     w(`\t\t\tNormals: *${m.normals.length} {`);
-    w(`\t\t\t\ta: ${arr(m.normals)}`);
+    w(`\t\t\t\ta: ${arr(meshNrm[mi])}`);
     w("\t\t\t}");
     w("\t\t}");
     w("\t\tLayerElementUV: 0 {");
@@ -243,10 +273,10 @@ export function writeFbx(model: ExportModel, idGen: () => number): string {
       w(`\t\t\ta: ${arr(cl.weights)}`);
       w("\t\t}");
       w("\t\tTransform: *16 {");
-      w(`\t\t\ta: ${arr(transformInverse(bone.worldPos))}`);
+      w(`\t\t\ta: ${arr(transformInverse(boneWp[cl.boneIndex]))}`);
       w("\t\t}");
       w("\t\tTransformLink: *16 {");
-      w(`\t\t\ta: ${arr(transformLink(bone.worldPos))}`);
+      w(`\t\t\ta: ${arr(transformLink(boneWp[cl.boneIndex]))}`);
       w("\t\t}");
       w("\t}");
     });
@@ -261,10 +291,11 @@ export function writeFbx(model: ExportModel, idGen: () => number): string {
     w('\t\tTypeFlags: "Skeleton"');
     w("\t}");
 
-    const parent = b.parentIndex >= 0 ? model.bones[b.parentIndex] : null;
-    const lx = parent ? b.worldPos[0] - parent.worldPos[0] : b.worldPos[0];
-    const ly = parent ? b.worldPos[1] - parent.worldPos[1] : b.worldPos[1];
-    const lz = parent ? b.worldPos[2] - parent.worldPos[2] : b.worldPos[2];
+    const wp = boneWp[i];
+    const pwp = b.parentIndex >= 0 ? boneWp[b.parentIndex] : null;
+    const lx = pwp ? wp[0] - pwp[0] : wp[0];
+    const ly = pwp ? wp[1] - pwp[1] : wp[1];
+    const lz = pwp ? wp[2] - pwp[2] : wp[2];
 
     w(`\tModel: ${b.id}, "Model::${b.name}", "LimbNode" {`);
     w("\t\tVersion: 232");
@@ -288,9 +319,9 @@ export function writeFbx(model: ExportModel, idGen: () => number): string {
   for (const ids of meshIds) {
     poseNodes.push({ id: ids.mdl, mat: transformLink([0, 0, 0]) });
   }
-  for (const b of model.bones) {
-    poseNodes.push({ id: b.id, mat: transformLink(b.worldPos) });
-  }
+  model.bones.forEach((b, i) => {
+    poseNodes.push({ id: b.id, mat: transformLink(boneWp[i]) });
+  });
   w(`\tPose: ${poseId}, "Pose::BIND_POSES", "BindPose" {`);
   w('\t\tType: "BindPose"');
   w("\t\tVersion: 100");

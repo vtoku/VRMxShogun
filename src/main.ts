@@ -202,7 +202,11 @@ async function handleFile(file: File) {
     // Defaults: strip springs ON (when present) and gizmos visible.
     await nextPaint();
     const stripDefault = base.springNodes.size > 0;
-    const { result, toFbx } = buildModel({ ...base, stripSprings: stripDefault });
+    const { result, toFbx } = buildModel({
+      ...base,
+      stripSprings: stripDefault,
+      rotateExport: true, // Z-up (Shogun) by default
+    });
 
     // Reveal the loaded layout behind the loading overlay.
     if (preview) preview.dispose();
@@ -266,7 +270,8 @@ function wireHandlers(handles: PanelHandles) {
   });
 
   handles.skeletonCheckbox.addEventListener("change", () => void reprocess(handles));
-  handles.rotateCheckbox.addEventListener("change", () => void reprocess(handles));
+  handles.zUpRadio.addEventListener("change", () => void reprocess(handles));
+  handles.yUpRadio.addEventListener("change", () => void reprocess(handles));
 
   if (handles.stripCheckbox) {
     handles.stripCheckbox.addEventListener("change", () => void reprocess(handles));
@@ -279,7 +284,7 @@ async function reprocess(handles: PanelHandles) {
   if (!loaded || !preview) return;
   const strip = handles.stripCheckbox?.checked ?? false;
   const skeletonOnly = handles.skeletonCheckbox.checked;
-  const rotateExport = handles.rotateCheckbox.checked;
+  const rotateExport = handles.zUpRadio.checked;
 
   loadingName.textContent = loaded.file.name;
   loadingState.hidden = false;

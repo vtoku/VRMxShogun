@@ -18,7 +18,8 @@ export interface PanelHandles {
   stripCheckbox: HTMLInputElement | null;
   showBonesCheckbox: HTMLInputElement;
   skeletonCheckbox: HTMLInputElement;
-  rotateCheckbox: HTMLInputElement;
+  zUpRadio: HTMLInputElement;
+  yUpRadio: HTMLInputElement;
 }
 
 function fmtSize(bytes: number): string {
@@ -106,10 +107,11 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
         <input type="checkbox" id="skeleton-only" />
         <span>Skeleton only</span>
       </label>
-      <label class="opt">
-        <input type="checkbox" id="rotate-zup" />
-        <span>Rotate for Z-up Shogun (face-down fix)</span>
-      </label>
+      <div class="up-axis">
+        <span class="up-axis-label">Up axis</span>
+        <label><input type="radio" name="up-axis" id="up-y" /> Y-up (Maya)</label>
+        <label><input type="radio" name="up-axis" id="up-z" checked /> Z-up (Shogun)</label>
+      </div>
     </div>
 
     <button id="download-btn" class="download-btn">Download FBX</button>
@@ -128,6 +130,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
     stripCheckbox: panel.querySelector<HTMLInputElement>("#strip-springs"),
     showBonesCheckbox: panel.querySelector<HTMLInputElement>("#show-bones")!,
     skeletonCheckbox: panel.querySelector<HTMLInputElement>("#skeleton-only")!,
-    rotateCheckbox: panel.querySelector<HTMLInputElement>("#rotate-zup")!,
+    zUpRadio: panel.querySelector<HTMLInputElement>("#up-z")!,
+    yUpRadio: panel.querySelector<HTMLInputElement>("#up-y")!,
   };
 }

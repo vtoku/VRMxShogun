@@ -1,5 +1,4 @@
 import type { VrmInfo } from "../vrm/humanoid";
-import { REQUIRED_HUMANOID_BONES } from "../vrm/humanoid";
 
 export interface PanelData {
   filename: string;
@@ -9,7 +8,8 @@ export interface PanelData {
   meshCount: number;
   vertexCount: number;
   springCount: number;
-  hyphenBones: string[];
+  /** Shogun-specific issues collected upstream; rendered as a single box. */
+  warnings: string[];
 }
 
 export interface PanelHandles {
@@ -45,26 +45,13 @@ function escapeHtml(s: string): string {
 export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
   const v = data.vrm;
   const totalHumanoid = v ? Object.keys(v.humanoidBones).length : 0;
-  const missing = v
-    ? REQUIRED_HUMANOID_BONES.filter((b) => !(b in v.humanoidBones))
-    : REQUIRED_HUMANOID_BONES;
 
-  const warn =
-    missing.length > 0
-      ? `<div class="warn">Missing required humanoid bones: ${escapeHtml(
-          missing.join(", "),
-        )}. The FBX will still export, but retargeting may be incomplete.</div>`
-      : "";
-
-  const notVrm = !v
-    ? `<div class="warn">No VRM humanoid extension found — exporting the raw glTF skeleton.</div>`
-    : "";
-
-  const hyphenWarn =
-    data.hyphenBones.length > 0
-      ? `<div class="warn">${data.hyphenBones.length} bone name(s) contain "-": ${escapeHtml(
-          data.hyphenBones.slice(0, 6).join(", "),
-        )}${data.hyphenBones.length > 6 ? "…" : ""}. Shogun converts "-" to "_" on import, so these won't match their original names when retargeting back out (e.g. to Unity). Consider renaming them in the VRM first.</div>`
+  const warningsBlock =
+    data.warnings.length > 0
+      ? `<div class="warnings">
+          <div class="warnings-title">Warnings (${data.warnings.length})</div>
+          <ul>${data.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>
+        </div>`
       : "";
 
   const stripOption =
@@ -95,7 +82,7 @@ export function renderPanel(panel: HTMLElement, data: PanelData): PanelHandles {
       ${row("Meshes", `${data.meshCount} (${data.vertexCount.toLocaleString()} verts)`)}
     </div>
 
-    ${warn}${notVrm}${hyphenWarn}
+    ${warningsBlock}
 
     <div class="options">
       ${stripOption}

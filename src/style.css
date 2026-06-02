@@ -306,6 +306,28 @@ body.dragging .dropzone {
   font-size: 13px;
 }
 
+.warnings {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius);
+  color: var(--warn-text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.warnings-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.warnings ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.warnings li + li {
+  margin-top: 6px;
+}
+
 .options {
   margin-top: 16px;
   display: flex;

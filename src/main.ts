@@ -2,7 +2,7 @@ import "./style.css";
 import { Box3, Vector3 } from "three";
 import type { Object3D } from "three";
 import { parseGLB, sanitizeGlb } from "./vrm/glb";
-import { extractVrm } from "./vrm/humanoid";
+import { extractVrm, REQUIRED_HUMANOID_BONES } from "./vrm/humanoid";
 import type { VrmInfo } from "./vrm/humanoid";
 import { extractSpringNodeIndices } from "./vrm/springs";
 import { loadGltf } from "./vrm/loadGltf";
@@ -150,10 +150,102 @@ function buildNodeMaps(gltf: any): {
   return { nodeToObj, objToNode };
 }
 
-// Exported bone names that Shogun will mangle on import (it converts "-" to "_",
-// so the bone won't match its original name when retargeting back out to Unity).
-function hyphenBoneNames(result: BuildResult): string[] {
-  return result.model.bones.map((b) => b.name).filter((n) => n.includes("-"));
+// Surface issues a user is likely to hit in Shogun, based on Shogun's docs and
+// Maya-derived name sanitisation. One string per issue; rendered as a single
+// Warnings list in the panel.
+function collectWarnings(result: BuildResult, vrm: VrmInfo | null): string[] {
+  const out: string[] = [];
+  const bones = result.model.bones;
+  const names = bones.map((b) => b.name);
+  const sample = (arr: string[]) =>
+    arr.slice(0, 4).join(", ") + (arr.length > 4 ? "…" : "");
+
+  if (!vrm) {
+    out.push(
+      'No VRM humanoid extension found — exporting the raw glTF skeleton. Shogun won\'t recognise humanoid bone roles automatically.',
+    );
+  } else {
+    const missing = REQUIRED_HUMANOID_BONES.filter((b) => !(b in vrm.humanoidBones));
+    if (missing.length) {
+      out.push(
+        `Missing required humanoid bones: ${missing.join(", ")}. Retargeting in Shogun may be incomplete.`,
+      );
+    }
+  }
+
+  const hyphen = names.filter((n) => n.includes("-"));
+  if (hyphen.length) {
+    out.push(
+      `${hyphen.length} bone name(s) contain "-" (e.g. ${sample(hyphen)}). Shogun converts "-" to "_" on import, which breaks name-based retargeting back out (e.g. to Unity).`,
+    );
+  }
+
+  const dot = names.filter((n) => n.includes("."));
+  if (dot.length) {
+    out.push(
+      `${dot.length} bone name(s) contain "." (e.g. ${sample(dot)}). Maya-based tools may strip the dot on import (e.g. "spine.001" → "spine001"), desyncing names from the source VRM.`,
+    );
+  }
+
+  const space = names.filter((n) => n.includes(" "));
+  if (space.length) {
+    out.push(
+      `${space.length} bone name(s) contain spaces (e.g. ${sample(space)}). Maya/Shogun replace spaces with "_" on import.`,
+    );
+  }
+
+  const counts = new Map<string, number>();
+  for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const dupes = [...counts.entries()].filter(([, c]) => c > 1).map(([n]) => n);
+  if (dupes.length) {
+    out.push(
+      `${dupes.length} duplicate bone name(s): ${sample(dupes)}. Shogun can't distinguish bones with the same name.`,
+    );
+  }
+
+  // Above-root non-zero transforms (per Shogun "Create an optimal target skeleton")
+  const hipsName = vrm?.humanoidBones?.hips?.nodeName;
+  if (hipsName) {
+    const hipsIdx = bones.findIndex((b) => b.name === hipsName);
+    if (hipsIdx >= 0) {
+      const offenders: string[] = [];
+      let p = bones[hipsIdx].parentIndex;
+      while (p >= 0) {
+        const [x, y, z] = bones[p].worldPos;
+        if (Math.abs(x) > 0.01 || Math.abs(y) > 0.01 || Math.abs(z) > 0.01) {
+          offenders.push(bones[p].name);
+        }
+        p = bones[p].parentIndex;
+      }
+      if (offenders.length) {
+        out.push(
+          `Nodes above the hips have non-zero transforms: ${offenders.join(", ")}. Per Shogun's docs you may need to adjust the hierarchy in Post after import.`,
+        );
+      }
+    }
+  }
+
+  // Humanoid skeleton scale sanity check (worldPos is in cm)
+  if (vrm) {
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const ref of Object.values(vrm.humanoidBones)) {
+      const b = bones.find((x) => x.name === ref.nodeName);
+      if (!b) continue;
+      minY = Math.min(minY, b.worldPos[1]);
+      maxY = Math.max(maxY, b.worldPos[1]);
+    }
+    if (Number.isFinite(minY) && Number.isFinite(maxY)) {
+      const heightCm = maxY - minY;
+      if (heightCm < 30 || heightCm > 400) {
+        out.push(
+          `Humanoid skeleton spans ${heightCm.toFixed(0)} cm — unusual height; double-check the source VRM's scale before retargeting.`,
+        );
+      }
+    }
+  }
+
+  return out;
 }
 
 async function handleFile(file: File) {
@@ -226,7 +318,7 @@ async function handleFile(file: File) {
       meshCount: result.model.meshes.length,
       vertexCount: result.model.totalVertices,
       springCount: result.springBoneCount,
-      hyphenBones: hyphenBoneNames(result),
+      warnings: collectWarnings(result, vrm),
     });
     wireHandlers(handles);
 

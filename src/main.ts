@@ -121,13 +121,19 @@ function hipsAncestors(result: BuildResult, vrm: VrmInfo | null): Set<number> {
 
 // Update the preview's bone gizmos + diamond wireframe, and toggle whether the
 // mesh or the wireframe armature is shown (skeleton-only mode).
-function applyBoneVisuals(result: BuildResult, vrm: VrmInfo | null, skeletonOnly: boolean) {
+function applyBoneVisuals(
+  result: BuildResult,
+  vrm: VrmInfo | null,
+  skeletonOnly: boolean,
+  upAxis: "y" | "z",
+) {
   if (!preview) return;
   const skip = hipsAncestors(result, vrm);
   preview.setBoneGizmos(gizmoPositions(result));
   preview.setBoneWireframe(boneDiamondEdges(result.model.bones, 0.01, skip));
   preview.setWireframeVisible(skeletonOnly);
   preview.setModelVisible(!skeletonOnly);
+  preview.setUpAxis(upAxis);
 }
 
 // Node-index <-> object maps from GLTFLoader associations, so the export uses
@@ -306,7 +312,7 @@ async function handleFile(file: File) {
     preview = new PreviewScene(viewport);
     preview.setModel(gltf.scene, humanoidFocusBox(vrm, nodeToObj) ?? undefined);
     preview.setGizmosVisible(true);
-    applyBoneVisuals(result, vrm, false);
+    applyBoneVisuals(result, vrm, false, "z");
 
     loaded = { base, file, toFbx };
 
@@ -389,7 +395,7 @@ async function reprocess(handles: PanelHandles) {
     rotateExport,
   });
   loaded.toFbx = toFbx;
-  applyBoneVisuals(result, loaded.base.vrm, skeletonOnly);
+  applyBoneVisuals(result, loaded.base.vrm, skeletonOnly, rotateExport ? "z" : "y");
   const count = panel.querySelector("#bone-count");
   if (count) count.textContent = String(result.model.boneCount);
 

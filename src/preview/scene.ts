@@ -31,6 +31,9 @@ export class PreviewScene {
   private current: THREE.Object3D | null = null;
   private gizmos: THREE.Group | null = null;
   private gizmosVisible = false;
+  private boneAxes: THREE.AxesHelper[] = [];
+  private rootAxisGroup: THREE.Group | null = null;
+  private upAxis: "y" | "z" = "y";
   private wireframe: THREE.LineSegments | null = null;
   private wireframeVisible = false;
   private renderWaiters: Array<() => void> = [];
@@ -115,6 +118,7 @@ export class PreviewScene {
   setBoneGizmos(positionsMeters: Array<[number, number, number]>, size = 0.04) {
     this.clearGizmos();
     const group = new THREE.Group();
+    this.boneAxes = [];
     for (const p of positionsMeters) {
       const ax = new THREE.AxesHelper(size);
       ax.position.set(p[0], p[1], p[2]);
@@ -123,16 +127,19 @@ export class PreviewScene {
       mat.transparent = true;
       ax.renderOrder = 999;
       group.add(ax);
+      this.boneAxes.push(ax);
     }
-    // Export root frame at the world origin (the FBX scene root), drawn larger
-    // so it's distinguishable from the per-bone gizmos, with X/Y/Z labels.
+
+    // Root axes + X/Y/Z labels live in their own sub-group so they can be
+    // rotated independently of the per-bone gizmos' positions.
+    const rootGroup = new THREE.Group();
     const rootSize = size * 3.5;
     const root = new THREE.AxesHelper(rootSize);
     const rootMat = root.material as THREE.Material;
     rootMat.depthTest = false;
     rootMat.transparent = true;
     root.renderOrder = 1000;
-    group.add(root);
+    rootGroup.add(root);
 
     const ld = rootSize * 1.15;
     const ls = size * 1.3;
@@ -140,15 +147,32 @@ export class PreviewScene {
       const sp = makeAxisLabel(t, color);
       sp.position.set(x, y, z);
       sp.scale.setScalar(ls);
-      group.add(sp);
+      rootGroup.add(sp);
     };
     addLabel("X", "#ff5555", ld, 0, 0);
     addLabel("Y", "#55ff77", 0, ld, 0);
     addLabel("Z", "#5588ff", 0, 0, ld);
+    group.add(rootGroup);
+    this.rootAxisGroup = rootGroup;
 
     group.visible = this.gizmosVisible;
     this.gizmos = group;
     this.scene.add(group);
+    this.applyUpAxis();
+  }
+
+  // For Z-up (Shogun): rotate gizmos -90° about X so the displayed axes match
+  // Shogun's frame (Z up, Y depth) — labels and line colors follow naturally.
+  // Per-bone axes rotate in place; root sub-group rotates around the origin.
+  setUpAxis(axis: "y" | "z") {
+    this.upAxis = axis;
+    this.applyUpAxis();
+  }
+
+  private applyUpAxis() {
+    const rx = this.upAxis === "z" ? -Math.PI / 2 : 0;
+    for (const ax of this.boneAxes) ax.rotation.set(rx, 0, 0);
+    if (this.rootAxisGroup) this.rootAxisGroup.rotation.set(rx, 0, 0);
   }
 
   setGizmosVisible(visible: boolean) {
@@ -203,6 +227,8 @@ export class PreviewScene {
       }
     });
     this.gizmos = null;
+    this.boneAxes = [];
+    this.rootAxisGroup = null;
   }
 
   // focusBox (if given, e.g. the humanoid body bones) is framed instead of the

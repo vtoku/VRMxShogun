@@ -24,9 +24,10 @@ npm install
 npm run dev        # Vite dev server
 npm run build      # type-check + production build to dist/
 npm run preview    # serve built dist/ — ALWAYS test the Pages base path here, not just dev
+npm run smoke      # smoke tests: fbxSmoke.ts (FBX writer round-trip via FBXLoader) + stripTest.ts (build/spring-strip logic)
 ```
 
-No tests/linter configured yet. When adding them, document the single-test invocation here.
+Tests are plain Node scripts (no test framework, no linter). Run one directly with `node --experimental-strip-types scripts/<name>.ts`. Besides the two smoke tests, `scripts/` has diagnostics that take a file argument: `checkFbx.ts`/`hierCheck.ts`/`rootcheck.ts` inspect a produced `.fbx`; `simExport.ts`/`vrmNodes.ts` inspect a source `.vrm`. Each script's header comment shows its exact invocation.
 
 ## Conversion pipeline
 
@@ -42,6 +43,8 @@ VRM file (drag/drop, whole page)
 
 Keep parse → rebake output-agnostic from the FBX writer. The rebake produces one normalized skeleton; the writer is a pure consumer of it.
 
+Export options live on `BuildInput` in [src/convert/build.ts](src/convert/build.ts): `stripSprings` (drop spring/jiggle bones, reweighting their skin weights to the parent — detection in [src/vrm/springs.ts](src/vrm/springs.ts)), `skeletonOnly` (no meshes/skinning), and `rotateExport` (the Z-up pre-rotation, see Axis/units below).
+
 ## Domain knowledge that is easy to get wrong
 
 - **The bone rebake is the riskiest correctness work**, independent of any export library. Shogun expects the Maya joint convention: every joint has **identity rotation/PreRotation in bind pose**, differing only by `Lcl Translation` (world-space offset from parent). VRM rigs carry local rotations in the T-pose, so you must: compute each bone's world transform, discard rotation, set local translation = `worldPos_self − worldPos_parent`, zero all rotations, then recompute skin-cluster matrices (`TransformLink` = bone world bind, `Transform` = its inverse). Vertices/weights are unchanged. See SPEC.md §"Bone orientation rebake". Verify in Blender: bones must be world-axis aligned, not pointing down their own length.
@@ -52,7 +55,7 @@ Keep parse → rebake output-agnostic from the FBX writer. The rebake produces o
 
 - **VRM 0.x vs 1.0 differ** in extension key (`VRM` vs `VRMC_vrm`), humanBones shape (array vs object), meta field names, and forward axis (180° apart). Detect the version and normalize both into one internal `{ version, meta, humanoidBones }` shape.
 
-- **Axis/units:** geometry is converted meters→cm (`METERS_TO_CM` in [src/convert/build.ts](src/convert/build.ts)) and the FBX declares `UpAxis=Y`, `UnitScaleFactor=1`; geometry is **not** rotated. This makes size correct regardless of whether the importer applies `UnitScaleFactor`. Keep the scale constant centralized. Fallback documented in SPEC.md/README if Shogun imports at wrong scale or rotated 90°.
+- **Axis/units:** geometry is converted meters→cm (`METERS_TO_CM` in [src/convert/build.ts](src/convert/build.ts)) and the FBX declares `UnitScaleFactor=1`, making size correct regardless of whether the importer applies it. Keep the scale constant centralized. The UI has an up-axis radio: **Z-up (Shogun) is the default** and bakes a +90° X pre-rotation into the exported geometry (`rotateExport` in `BuildInput`); Y-up (Maya) exports unrotated. The `GlobalSettings` header **must declare the axes matching the baked geometry** (Z-up: `UpAxis=2, FrontAxis=1, FrontAxisSign=-1`; Y-up: `UpAxis=1, FrontAxis=2`) — Shogun 1.7+ auto-converts imports by the header, so a Y-up header on rotated geometry gets re-rotated and lands face-down (the v0.4.11 fix). The 3D preview and gizmo labels follow the selected axis.
 
 - **Never rename bones and never change the hierarchy.** Preserve the VRM's original bone names and parenting exactly. Renaming (even to a "Shogun-friendly" schema) **breaks downstream streaming retargeting to Unity/Warudo**, which keys off the original names — this was confirmed by real-world testing and overrides the original spec. Shogun compatibility comes from FBX *structure* + the bind-pose rebake, NOT from names. (Orientation is the one thing the rebake changes — that is required by Shogun and is allowed.)
 
@@ -64,4 +67,4 @@ Keep parse → rebake output-agnostic from the FBX writer. The rebake produces o
 
 ## Repo note
 
-`VRMxShogun/` has its **own** git repo (origin `vtoku/VRMxShogun`). It sits inside an unrelated local catch-all `Claude/` git tree (camboxd, WarudoDiscordApp) that has no remote — ignore that outer repo; all work and commits here target this repo only.
+Origin is `vtoku/VRMxShogun` (an org repo). All work and commits target this repo only.

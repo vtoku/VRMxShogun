@@ -17,6 +17,12 @@ Wherever the sections below say to rename bones to a Shogun schema, treat that a
 
 ---
 
+## Revision note (2026-06-11) — Z-up export is real, header must match
+
+The "Coordinate system reference" below says to always declare `UpAxis=Y` and never rotate geometry, letting Shogun's import convert. **Real-world testing forced the documented fallback instead:** the app has an up-axis toggle, defaulting to Z-up (Shogun), which bakes a +90° X rotation into the exported geometry. As of v0.4.11 the FBX `GlobalSettings` header also follows the toggle (Z-up: `UpAxis=2, FrontAxis=1, FrontAxisSign=-1`; Y-up: `UpAxis=1, FrontAxis=2`). The header and the baked geometry must always agree: Shogun 1.7+ converts imports to its Z-up world based on the header, so a Y-up header on rotated geometry was double-rotated and imported face-down.
+
+---
+
 ## Why this exists
 
 Vicon Shogun has no built-in VRM importer and no public plugin SDK for adding one. Shogun reads FBX cleanly. VRM is glTF 2.0 with a humanoid extension. So the workable path is: convert VRM → FBX in the browser, with the conversion tuned to what Shogun specifically expects (axis settings, bind pose, LimbNode hierarchy, skin clusters).

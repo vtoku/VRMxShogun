@@ -29,8 +29,9 @@ function transformInverse(p: [number, number, number]): number[] {
 }
 
 export interface WriteOpts {
-  /** Pre-rotate exported content +90° about X so it lands upright in a Z-up
-   *  Shogun project (otherwise the Y-up FBX imports face-down). Preview is
+  /** Pre-rotate exported content +90° about X AND declare Z-up in
+   *  GlobalSettings, so the file is upright both in importers that ignore the
+   *  header and in those (Shogun 1.7+) that convert by it. Preview is
    *  unaffected — this only changes the FBX. */
   rotate?: boolean;
 }
@@ -104,14 +105,23 @@ export function writeFbx(
   w('\tCreator: "VRMxShogun"');
   w("}");
 
-  // ---- global settings (Y-up, cm) ---------------------------------------
+  // ---- global settings ----------------------------------------------------
+  // The declared axes must match the baked geometry, or importers that honor
+  // the header (Shogun 1.7+ auto-converts to its Z-up world) re-rotate already
+  // rotated content and the character lands face-down. The +90° X bake maps
+  // Y-up/front-Z onto the standard Z-up declaration (up +Z, front -Y, the
+  // 3ds Max convention); without the bake we declare Y-up (Maya convention).
+  // OriginalUpAxis stays Y in both modes: the VRM source is always Y-up.
+  const axes = opts.rotate
+    ? { up: 2, front: 1, frontSign: -1 } // Z-up
+    : { up: 1, front: 2, frontSign: 1 }; // Y-up
   w("GlobalSettings:  {");
   w("\tVersion: 1000");
   w("\tProperties70:  {");
-  w('\t\tP: "UpAxis", "int", "Integer", "",1');
+  w(`\t\tP: "UpAxis", "int", "Integer", "",${axes.up}`);
   w('\t\tP: "UpAxisSign", "int", "Integer", "",1');
-  w('\t\tP: "FrontAxis", "int", "Integer", "",2');
-  w('\t\tP: "FrontAxisSign", "int", "Integer", "",1');
+  w(`\t\tP: "FrontAxis", "int", "Integer", "",${axes.front}`);
+  w(`\t\tP: "FrontAxisSign", "int", "Integer", "",${axes.frontSign}`);
   w('\t\tP: "CoordAxis", "int", "Integer", "",0');
   w('\t\tP: "CoordAxisSign", "int", "Integer", "",1');
   w('\t\tP: "OriginalUpAxis", "int", "Integer", "",1');

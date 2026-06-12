@@ -56,7 +56,19 @@ console.log("FBX bytes:", fbx.length);
 console.log("parsed bones:", boneCount, "meshes:", meshCount);
 console.log("found Hips:", foundHips, "found Spine:", foundSpine);
 
-if (boneCount >= 2 && meshCount >= 1 && foundHips && foundSpine) {
+// GlobalSettings axes must track the rotate option (header/geometry mismatch
+// makes Shogun 1.7+ re-rotate the file and import it face-down).
+const yUpHeader =
+  fbx.includes('P: "UpAxis", "int", "Integer", "",1') &&
+  fbx.includes('P: "FrontAxis", "int", "Integer", "",2');
+const fbxZ = writeFbx(model as any, idGen, { rotate: true });
+const zUpHeader =
+  fbxZ.includes('P: "UpAxis", "int", "Integer", "",2') &&
+  fbxZ.includes('P: "FrontAxis", "int", "Integer", "",1') &&
+  fbxZ.includes('P: "FrontAxisSign", "int", "Integer", "",-1');
+console.log("Y-up header:", yUpHeader, "Z-up header (rotate):", zUpHeader);
+
+if (boneCount >= 2 && meshCount >= 1 && foundHips && foundSpine && yUpHeader && zUpHeader) {
   console.log("SMOKE TEST PASS");
 } else {
   console.error("SMOKE TEST FAIL");
